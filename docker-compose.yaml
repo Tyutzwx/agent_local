@@ -1,0 +1,77 @@
+version: '3'
+services:
+  mysql_tars_local:
+    image: mysql:deep_260328
+    container_name: mysql_tars_local
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=tars123456
+
+  redis_offline_map:
+    image: redis:offline_map_test2
+    container_name: redis_offline_map
+    restart: always
+    command: redis-server /etc/redis/redis.conf
+
+  planer-release:
+    image: z-planner:local_0412
+    container_name: planner_release
+    restart: always
+    environment:
+      - REDIS_HOST=redis_offline_map
+      - REDIS_PORT=6379
+
+  milvus-standalone:
+    image: milvusdb/milvus:v2.5.8-paas
+    container_name: milvus-standalone
+    restart: always
+    privileged: true
+    environment:
+      - ETCD_USE_EMBED=true
+      - ETCD_DATA_DIR=/var/lib/milvus/etcd
+      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+      - COMMON_STORAGETYPE=local
+    command: milvus run standalone  1> /dev/null
+
+  agent_websocket_local:
+    image: agent_local_deep:0423
+    depends_on:
+      - mysql_tars_local
+      - redis_offline_map
+    container_name: agent_websocket_local
+    restart: always
+    privileged: true
+    environment:
+      - ENV_CONFIG=prod
+      - TZ=Asia/Shanghai
+        # 企业大脑地址
+      - LOCAL_DIFY_URL=http://http://http://10.1.0.247/frameWorkPortal/agent/frameWorkPortal/agent/frameWorkPortal/agent
+        # 大模型地址，当前部署deepseek
+      - LOCAL_LLM_URL=http://10.1.0.247
+      - LOCAL_LLM_UID=llm
+      - API_KEY=xxx
+        # embedding地址
+      - LOCAL_EMB_URL=http://10.1.0.247:18345/v1/mbeddings
+      - LOCAL_EMB_UID=Embedding
+        # redis地址
+      - REDIS_HOST=redis_offline_map
+      - REDIS_PORT=6379
+        # mysql地址
+      - MYSQL_HOST=10.1.0.247
+      - MYSQL_PORT=3306
+      - DB_DB=数据库
+      - DB_USER=root
+      - DB_PASSWORD=tars123456
+      - DB_TYPE=mysql
+        # milvus地址
+      - MILVUS_URL=http://milvus-standalone:19530
+        # planner地址
+      - OFFLINE_PLANER_URL=http://planer-release:5000/text
+        # 文件上传地址
+      - FILE_UPLOAD_URL=http://http://http://10.1.0.247/frameWorkPortal/agent/frameWorkPortal/agent/agent_proxy
+        # ADMIN地址
+      - ADMIN_URL=http://http://http://10.1.0.247/frameWorkPortal/agent/frameWorkPortal/agent/agent_proxy
+      - MINIO_INTERNAL_URL=http://http://http://10.1.0.247/frameWorkPortal/agent/frameWorkPortal/agent/szzn-minio
+      - MINIO_EXTERNAL_URL=http://http://http://10.1.0.247/frameWorkPortal/agent/frameWorkPortal/agent/szzn-minio
+    ports:
+      - "16580:17850"

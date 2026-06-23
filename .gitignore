@@ -1,0 +1,52 @@
+# 日志文件
+*.log
+gunicorn_error.log
+gunicorn_access.log
+deploy.log
+
+# 备份文件
+tools/*.bak
+tools/backups/
+
+# 配置文件（可能包含密码）
+# 如果想保留模板，可排除具体配置文件，但当前项目需要提交模板的话可选择性包含
+# 我们建议提交 docker-compose.yaml 和 config.cfg 但去除敏感值，或者使用环境变量
+# 这里先注释掉，您可根据需要决定
+# docker-compose.yaml
+# test/config.cfg
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+*.tmp
+*.tar.gz
+*.zip
+
+# Gunicorn PID 文件
+gunicorn.pid
+
+# 测试生成的临时文件
+/test/__pycache__/
+
+# 镜像文件（可能很大）
+*.tar
+*.tar.gz
+
+# 备份快照（如果您用脚本生成）
+backups/

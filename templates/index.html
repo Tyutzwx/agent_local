@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent 部署控制台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 960px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; font-weight: 300; }
+        .content { padding: 40px; }
+        .scene-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 16px;
+            padding: 30px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+            border-color: #3498db;
+        }
+        .card .icon { font-size: 3rem; margin-bottom: 15px; }
+        .card .title { font-size: 1.2rem; font-weight: 600; margin-bottom: 8px; }
+        .card .desc { font-size: 0.9rem; color: #7f8c8d; }
+        .warning { border-left: 5px solid #e74c3c; }
+
+        .form-section {
+            display: none;
+            margin-top: 20px;
+            animation: fadeIn 0.4s ease;
+        }
+        .form-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .config-module {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #dee2e6;
+        }
+        .config-module h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+        }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: 500; color: #495057; }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+        .input-group input:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 3px rgba(52,152,219,0.2); }
+        .current-value { font-size: 0.8rem; color: #6c757d; margin-left: 5px; }
+        .btn {
+            display: inline-block;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            color: white;
+            background: #3498db;
+            margin: 5px;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #2980b9; }
+        .btn.danger { background: #e74c3c; }
+        .btn.danger:hover { background: #c0392b; }
+        .btn.success { background: #27ae60; }
+        .btn.success:hover { background: #219a52; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .log-output {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+        .alert { padding: 12px 20px; border-radius: 8px; margin: 15px 0; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-buttons { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #3498db; cursor: pointer; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header"><h1>🧠 Agent 部署控制台</h1></div>
+    <div class="content">
+        <!-- 主页 -->
+        <div id="view-home">
+            <div class="scene-cards">
+                <div class="card" onclick="showScene('deploy')">
+                    <div class="icon">🚀</div>
+                    <div class="title">算法服务初始化启动</div>
+                    <div class="desc">首次部署 / 修改配置后重启服务</div>
+                </div>
+                <div class="card" onclick="showScene('test')">
+                    <div class="icon">🧪</div>
+                    <div class="title">模型测试与业务流程测试</div>
+                    <div class="desc">请回终端操作（网页仅显示指引）</div>
+                </div>
+                <div class="card warning" onclick="showScene('reset')">
+                    <div class="icon">⚠️</div>
+                    <div class="title">服务配置重置</div>
+                    <div class="desc">恢复出厂配置（谨慎使用）</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 场景1：部署 -->
+        <div id="view-deploy" class="form-section">
+            <span class="back-link" onclick="goHome()">← 返回主页</span>
+            <h2>服务部署与配置</h2>
+            <div id="deploy-first" style="display:none;">
+                <p>首次部署 – 请依次填写以下配置项，然后点击“加载镜像并启动服务”。</p>
+                <div id="config-form"></div>
+                <button class="btn success" id="btn-load-start">加载镜像并启动服务</button>
+                <div id="deploy-log" class="log-output" style="display:none;"></div>
+            </div>
+            <div id="deploy-not-first" style="display:none;">
+                <p>非首次部署 – 请选择要修改的模块：</p>
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin: 20px 0;">
+                    <button class="btn" onclick="showModule('dify')">修改企业大脑地址</button>
+                    <button class="btn" onclick="showModule('llm')">修改大语言模型地址</button>
+                    <button class="btn" onclick="showModule('embedding')">修改Embedding模型地址</button>
+                </div>
+                <div id="single-module-form" style="display:none;"></div>
+                <button class="btn success" id="btn-restart-service" style="display:none;">重启服务</button>
+                <div id="deploy-log2" class="log-output" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- 场景2：测试（简化提示） -->
+        <div id="view-test" class="form-section">
+            <span class="back-link" onclick="goHome()">← 返回主页</span>
+            <h2>测试执行</h2>
+            <p>测试功能需在终端手动操作。点击下方按钮查看详细指引。</p>
+            <button class="btn" id="btn-run-test" onclick="runTest()">显示操作提示</button>
+            <div id="test-log" class="log-output" style="display:none;"></div>
+        </div>
+
+        <!-- 场景3：重置 -->
+        <div id="view-reset" class="form-section">
+            <span class="back-link" onclick="goHome()">← 返回主页</span>
+            <h2>配置重置</h2>
+            <p class="alert alert-error">⚠️ 此操作将删除当前所有配置，恢复到初始备份状态！</p>
+            <button class="btn danger" onclick="showResetModal()">执行重置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal" id="reset-modal">
+    <div class="modal-content">
+        <h3>⚠️ 确认重置</h3>
+        <p>将删除部署记录并恢复初始配置文件，此操作不可逆！</p>
+        <div class="modal-buttons">
+            <button class="btn" onclick="closeModal('reset-modal')">取消</button>
+            <button class="btn danger" onclick="confirmReset()">确认重置</button>
+        </div>
+    </div>
+</div>
+
+<!-- 结果弹窗 -->
+<div class="modal" id="result-modal">
+    <div class="modal-content">
+        <h3 id="result-title">提示</h3>
+        <p id="result-msg"></p>
+        <div class="modal-buttons">
+            <button class="btn" onclick="closeModal('result-modal')">确定</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let stateCache = null;
+
+    async function fetchState() {
+        const resp = await fetch('/api/state');
+        stateCache = await resp.json();
+    }
+
+    async function showScene(scene) {
+        await fetchState();
+        document.getElementById('view-home').style.display = 'none';
+        document.getElementById('view-deploy').classList.remove('active');
+        document.getElementById('view-test').classList.remove('active');
+        document.getElementById('view-reset').classList.remove('active');
+
+        if (scene === 'deploy') {
+            document.getElementById('view-deploy').classList.add('active');
+            if (stateCache.is_first_time) {
+                document.getElementById('deploy-first').style.display = 'block';
+                document.getElementById('deploy-not-first').style.display = 'none';
+                renderFullConfigForm();
+            } else {
+                document.getElementById('deploy-first').style.display = 'none';
+                document.getElementById('deploy-not-first').style.display = 'block';
+                document.getElementById('single-module-form').style.display = 'none';
+                document.getElementById('btn-restart-service').style.display = 'none';
+                document.getElementById('deploy-log2').style.display = 'none';
+            }
+        } else if (scene === 'test') {
+            document.getElementById('view-test').classList.add('active');
+            document.getElementById('test-log').style.display = 'none';
+            document.getElementById('test-log').textContent = '';
+        } else if (scene === 'reset') {
+            document.getElementById('view-reset').classList.add('active');
+        }
+    }
+
+    function goHome() {
+        document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
+        document.getElementById('view-home').style.display = 'block';
+    }
+
+    function renderFullConfigForm() {
+        const formDiv = document.getElementById('config-form');
+        formDiv.innerHTML = `
+            <div class="config-module">
+                <h3>企业大脑地址</h3>
+                <div class="input-group">
+                    <label>当前值：<span class="current-value">${stateCache.dify_url || '未设置'}</span></label>
+                    <input type="text" id="dify-ip-port" placeholder="例: 127.0.0.1:8089">
+                </div>
+            </div>
+            <div class="config-module">
+                <h3>大语言模型 (LLM)</h3>
+                <div class="input-group">
+                    <label>URL <span class="current-value">(${stateCache.llm_url || '无'})</span></label>
+                    <input type="text" id="llm-url" placeholder="例: http://127.0.0.1:16000/v1">
+                </div>
+                <div class="input-group">
+                    <label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label>
+                    <input type="text" id="llm-uid" placeholder="模型ID">
+                </div>
+                <div class="input-group">
+                    <label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label>
+                    <input type="text" id="llm-key" placeholder="留空则使用默认">
+                </div>
+            </div>
+            <div class="config-module">
+                <h3>Embedding 模型</h3>
+                <div class="input-group">
+                    <label>URL <span class="current-value">(${stateCache.emb_url || '无'})</span></label>
+                    <input type="text" id="emb-url" placeholder="例: http://127.0.0.1:16001/v1/embeddings">
+                </div>
+                <div class="input-group">
+                    <label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label>
+                    <input type="text" id="emb-uid" placeholder="模型ID">
+                </div>
+            </div>
+            <div class="config-module">
+                <h3>数据库配置（可选）</h3>
+                <div class="input-group">
+                    <label>Host <span class="current-value">(${stateCache.mysql_host || '无'})</span></label>
+                    <input type="text" id="db-host" placeholder="数据库主机">
+                </div>
+                <div class="input-group">
+                    <label>Port <span class="current-value">(${stateCache.mysql_port || '无'})</span></label>
+                    <input type="text" id="db-port" placeholder="端口号">
+                </div>
+                <div class="input-group">
+                    <label>数据库名 <span class="current-value">(${stateCache.db_db || 'saas'})</span></label>
+                    <input type="text" id="db-db" placeholder="默认 saas">
+                </div>
+                <div class="input-group">
+                    <label>用户名 <span class="current-value">(${stateCache.db_user || '无'})</span></label>
+                    <input type="text" id="db-user" placeholder="用户名">
+                </div>
+                <div class="input-group">
+                    <label>密码 <span class="current-value">(已隐藏)</span></label>
+                    <input type="password" id="db-password" placeholder="输入新密码">
+                </div>
+                <div class="input-group">
+                    <label>类型 <span class="current-value">(${stateCache.db_type || 'mysql'})</span></label>
+                    <select id="db-type">
+                        <option value="mysql">mysql</option>
+                        <option value="dm">dm</option>
+                        <option value="kb">kb</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Schema <span class="current-value">(${stateCache.db_schema || 'public'})</span></label>
+                    <input type="text" id="db-schema" placeholder="默认 public">
+                </div>
+            </div>
+        `;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('btn-load-start').addEventListener('click', async () => {
+            await fetch('/api/deploy/backup', {method:'POST'});
+
+            const difyIp = document.getElementById('dify-ip-port')?.value;
+            if (difyIp) {
+                await fetch('/api/modify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
+                });
+            }
+            const llmUrl = document.getElementById('llm-url')?.value;
+            const llmUid = document.getElementById('llm-uid')?.value;
+            const llmKey = document.getElementById('llm-key')?.value;
+            if (llmUrl && llmUid) {
+                await fetch('/api/modify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
+                });
+            }
+            const embUrl = document.getElementById('emb-url')?.value;
+            const embUid = document.getElementById('emb-uid')?.value;
+            if (embUrl && embUid) {
+                await fetch('/api/modify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
+                });
+            }
+            const dbHost = document.getElementById('db-host')?.value;
+            const dbPort = document.getElementById('db-port')?.value;
+            if (dbHost || dbPort) {
+                const dbValues = {};
+                if (dbHost) dbValues.host = dbHost;
+                if (dbPort) dbValues.port = dbPort;
+                const dbDb = document.getElementById('db-db')?.value;
+                if (dbDb) dbValues.db_db = dbDb;
+                const dbUser = document.getElementById('db-user')?.value;
+                if (dbUser) dbValues.db_user = dbUser;
+                const dbPwd = document.getElementById('db-password')?.value;
+                if (dbPwd) dbValues.db_password = dbPwd;
+                const dbType = document.getElementById('db-type')?.value;
+                if (dbType) dbValues.db_type = dbType;
+                const dbSchema = document.getElementById('db-schema')?.value;
+                if (dbSchema) dbValues.db_schema = dbSchema;
+                await fetch('/api/modify', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({module:'db', values: dbValues})
+                });
+            }
+
+            const loadResp = await fetch('/api/deploy/load_images', {method:'POST'});
+            const loadData = await loadResp.json();
+            showLog('deploy-log', loadData.message || loadData.error);
+
+            const startResp = await fetch('/api/deploy/start_service', {method:'POST'});
+            const startData = await startResp.json();
+            showLog('deploy-log', startData.message || startData.error, startData.success);
+            await fetchState();
+        });
+    });
+
+    function showModule(module) {
+        const div = document.getElementById('single-module-form');
+        let html = '';
+        if (module === 'dify') {
+            html = `
+                <div class="config-module">
+                    <h3>企业大脑地址</h3>
+                    <div class="input-group">
+                        <label>当前值：<span class="current-value">${stateCache.dify_url || '无'}</span></label>
+                        <input type="text" id="dify-ip-single" placeholder="例: 127.0.0.1:8089">
+                    </div>
+                    <button class="btn" onclick="submitSingle('dify')">保存</button>
+                </div>`;
+        } else if (module === 'llm') {
+            html = `
+                <div class="config-module">
+                    <h3>大语言模型</h3>
+                    <div class="input-group"><label>URL <span class="current-value">(${stateCache.llm_url || '无'})</span></label><input type="text" id="llm-url-single"></div>
+                    <div class="input-group"><label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label><input type="text" id="llm-uid-single"></div>
+                    <div class="input-group"><label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label><input type="text" id="llm-key-single"></div>
+                    <button class="btn" onclick="submitSingle('llm')">保存</button>
+                </div>`;
+        } else if (module === 'embedding') {
+            html = `
+                <div class="config-module">
+                    <h3>Embedding 模型</h3>
+                    <div class="input-group"><label>URL <span class="current-value">(${stateCache.emb_url || '无'})</span></label><input type="text" id="emb-url-single"></div>
+                    <div class="input-group"><label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label><input type="text" id="emb-uid-single"></div>
+                    <button class="btn" onclick="submitSingle('embedding')">保存</button>
+                </div>`;
+        }
+        div.innerHTML = html;
+        div.style.display = 'block';
+        document.getElementById('btn-restart-service').style.display = 'inline-block';
+    }
+
+    async function submitSingle(module) {
+        let values = {};
+        if (module === 'dify') values.ip_port = document.getElementById('dify-ip-single').value;
+        else if (module === 'llm') {
+            values.url = document.getElementById('llm-url-single').value;
+            values.uid = document.getElementById('llm-uid-single').value;
+            values.key = document.getElementById('llm-key-single').value;
+        } else if (module === 'embedding') {
+            values.url = document.getElementById('emb-url-single').value;
+            values.uid = document.getElementById('emb-uid-single').value;
+        }
+        const resp = await fetch('/api/modify', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({module, values})
+        });
+        const data = await resp.json();
+        showResult(data.success ? '成功' : '失败', data.message || data.error);
+        await fetchState();
+        showModule(module);
+    }
+
+    document.getElementById('btn-restart-service').addEventListener('click', async () => {
+        const resp = await fetch('/api/deploy/start_service', {method:'POST'});
+        const data = await resp.json();
+        showLog('deploy-log2', data.message || data.error, data.success);
+    });
+
+    // 测试提示
+    async function runTest() {
+        const logDiv = document.getElementById('test-log');
+        logDiv.style.display = 'block';
+        logDiv.textContent = '正在获取提示...';
+        try {
+            const resp = await fetch('/api/test/run', { method: 'POST' });
+            const data = await resp.json();
+            logDiv.textContent = data.message || data.error || '未知错误';
+        } catch (e) {
+            logDiv.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    // 重置
+    function showResetModal() {
+        document.getElementById('reset-modal').classList.add('active');
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+    }
+    async function confirmReset() {
+        closeModal('reset-modal');
+        const resp = await fetch('/api/reset', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({confirm: true})
+        });
+        const data = await resp.json();
+        showResult(data.success ? '重置完成' : '重置失败', data.message || data.error);
+    }
+
+    function showResult(title, msg) {
+        document.getElementById('result-title').textContent = title;
+        document.getElementById('result-msg').textContent = msg;
+        document.getElementById('result-modal').classList.add('active');
+    }
+
+    function showLog(divId, msg, isSuccess) {
+        const div = document.getElementById(divId);
+        div.style.display = 'block';
+        div.textContent = msg;
+        if (isSuccess !== undefined) div.style.color = isSuccess ? '#27ae60' : '#e74c3c';
+    }
+
+    window.onload = () => fetchState();
+</script>
+</body>
+</html>
