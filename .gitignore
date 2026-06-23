@@ -50,3 +50,4 @@ gunicorn.pid
 
 # 备份快照（如果您用脚本生成）
 backups/
+tools/docker-compose-Linux-x86_64
