@@ -305,6 +305,125 @@ def start_service():
         return jsonify({"success": False, "error": res["stderr"] or "启动失败"})
 
 
+# ---------- 新增流式接口 ----------
+@app.route('/api/deploy/stream', methods=['POST'])
+def deploy_stream():
+    """
+    流式执行完整部署流程：备份 → 加载镜像 → 启动服务
+    返回 text/plain 或 text/event-stream，这里使用 text/plain 每行一个 JSON
+    """
+    def generate():
+        # 1. 备份
+        yield json.dumps({"step": "正在备份配置文件...", "status": "info"}) + "\n"
+        try:
+            shutil.copy2(COMPOSE_FILE, TOOLS_DIR / "docker-compose.yaml.bak")
+            if CONFIG_FILE.exists():
+                shutil.copy2(CONFIG_FILE, TOOLS_DIR / "config.cfg.bak")
+            yield json.dumps({"step": "备份完成", "status": "success"}) + "\n"
+        except Exception as e:
+            yield json.dumps({"step": f"备份失败: {str(e)}", "status": "error"}) + "\n"
+            return
+
+        # 2. 加载镜像
+        yield json.dumps({"step": "开始加载 Docker 镜像...", "status": "info"}) + "\n"
+        if IMAGES_DIR.exists():
+            image_files = list(IMAGES_DIR.glob("*"))
+            if image_files:
+                for img in image_files:
+                    result = subprocess.run(["docker", "load", "-i", str(img)], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        yield json.dumps({"step": f"成功加载 {img.name}", "status": "success"}) + "\n"
+                    else:
+                        yield json.dumps({"step": f"加载 {img.name} 失败: {result.stderr}", "status": "error"}) + "\n"
+                        return
+            else:
+                yield json.dumps({"step": "images 目录为空，跳过镜像加载", "status": "warning"}) + "\n"
+        else:
+            yield json.dumps({"step": "images 目录不存在，跳过镜像加载", "status": "warning"}) + "\n"
+
+        # 3. 启动服务
+        yield json.dumps({"step": "正在启动服务 (docker-compose up -d)...", "status": "info"}) + "\n"
+        # 检查 docker-compose 命令是否存在
+        docker_compose_cmd = "docker-compose"
+        if shutil.which("docker-compose") is None:
+            local_dc = TOOLS_DIR / "docker-compose-Linux-x86_64"
+            if local_dc.exists():
+                try:
+                    shutil.copy2(local_dc, "/usr/local/bin/docker-compose")
+                    os.chmod("/usr/local/bin/docker-compose", 0o755)
+                except PermissionError:
+                    yield json.dumps({"step": "无权复制 docker-compose，请手动执行", "status": "error"}) + "\n"
+                    return
+            else:
+                yield json.dumps({"step": "未找到 docker-compose", "status": "error"}) + "\n"
+                return
+
+        process = subprocess.Popen(
+            [docker_compose_cmd, "up", "-d"],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        # 实时输出每一行
+        for line in iter(process.stdout.readline, ''):
+            if line.strip():
+                yield json.dumps({"step": line.strip(), "status": "log"}) + "\n"
+        process.wait()
+        if process.returncode == 0:
+            with open(DEPLOY_LOG, 'a') as f:
+                f.write(f"服务启动完成 at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            yield json.dumps({"step": "🎉 服务启动成功！", "status": "success"}) + "\n"
+        else:
+            yield json.dumps({"step": "❌ 服务启动失败，请检查日志", "status": "error"}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/plain')
+
+
+@app.route('/api/service/restart/stream', methods=['POST'])
+def restart_service_stream():
+    """
+    流式重启服务（仅执行 docker-compose up -d）
+    """
+    def generate():
+        yield json.dumps({"step": "正在重启服务...", "status": "info"}) + "\n"
+        docker_compose_cmd = "docker-compose"
+        if shutil.which("docker-compose") is None:
+            local_dc = TOOLS_DIR / "docker-compose-Linux-x86_64"
+            if local_dc.exists():
+                try:
+                    shutil.copy2(local_dc, "/usr/local/bin/docker-compose")
+                    os.chmod("/usr/local/bin/docker-compose", 0o755)
+                except PermissionError:
+                    yield json.dumps({"step": "无权复制 docker-compose，请手动执行", "status": "error"}) + "\n"
+                    return
+            else:
+                yield json.dumps({"step": "未找到 docker-compose", "status": "error"}) + "\n"
+                return
+
+        process = subprocess.Popen(
+            [docker_compose_cmd, "up", "-d"],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+        for line in iter(process.stdout.readline, ''):
+            if line.strip():
+                yield json.dumps({"step": line.strip(), "status": "log"}) + "\n"
+        process.wait()
+        if process.returncode == 0:
+            with open(DEPLOY_LOG, 'a') as f:
+                f.write(f"服务重启完成 at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            yield json.dumps({"step": "✅ 服务重启成功", "status": "success"}) + "\n"
+        else:
+            yield json.dumps({"step": "❌ 服务重启失败", "status": "error"}) + "\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/plain')
+
+
 # ---------- 测试提示（简化） ----------
 @app.route('/api/test/run', methods=['POST'])
 def run_test_simple():
@@ -338,6 +457,77 @@ def reset_config():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+
+@app.route('/api/health')
+def health_check():
+    """检查 Docker 容器状态（使用 docker ps）"""
+    # 获取当前项目名称（默认为目录名）
+    project_name = PROJECT_ROOT.name  # 'agent_local'
+
+    try:
+        # 获取所有容器，并提取标签
+        cmd = [
+            'docker', 'ps', '-a',
+            '--format',
+            '{{.Names}}|{{.Status}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}'
+        ]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode != 0:
+            return jsonify({
+                "success": False,
+                "error": "docker ps 执行失败",
+                "detail": result.stderr
+            })
+
+        containers = []
+        lines = result.stdout.strip().split('\n')
+        for line in lines:
+            if not line.strip():
+                continue
+            parts = line.split('|')
+            if len(parts) < 4:
+                continue
+            name, status_raw, proj, service = parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip()
+            # 只保留属于当前项目的容器
+            if proj != project_name:
+                continue
+            # 如果服务标签为空，回退到容器名（或跳过）
+            service_name = service if service else name
+            is_up = status_raw.lower().startswith('up')
+            containers.append({
+                "service": service_name,
+                "state": "Up" if is_up else status_raw
+            })
+
+        total = len(containers)
+        running = sum(1 for c in containers if c["state"].lower().startswith('up'))
+        if total == 0:
+            overall = "stopped"
+        elif running == total:
+            overall = "running"
+        elif running > 0:
+            overall = "partial"
+        else:
+            overall = "stopped"
+
+        return jsonify({
+            "success": True,
+            "overall": overall,
+            "containers": containers,
+            "running": running,
+            "total": total
+        })
+    except subprocess.TimeoutExpired:
+        return jsonify({"success": False, "error": "命令超时"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=False)

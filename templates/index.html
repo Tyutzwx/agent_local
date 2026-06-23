@@ -117,6 +117,7 @@
             overflow-y: auto;
             margin: 15px 0;
         }
+        .log-output div { padding: 2px 0; }
         .alert { padding: 12px 20px; border-radius: 8px; margin: 15px 0; }
         .alert-error { background: #f8d7da; color: #721c24; }
 
@@ -141,6 +142,13 @@
         }
         .modal-buttons { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
         .back-link { display: inline-block; margin-bottom: 20px; color: #3498db; cursor: pointer; font-size: 0.9rem; }
+        .status-bar {
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -172,6 +180,10 @@
         <div id="view-deploy" class="form-section">
             <span class="back-link" onclick="goHome()">← 返回主页</span>
             <h2>服务部署与配置</h2>
+            <div id="service-status" class="status-bar">
+                服务状态：<span id="status-text">检查中...</span>
+                <span id="status-detail" style="font-size:0.8rem; color:#6c757d; margin-left:10px;"></span>
+            </div>
             <div id="deploy-first" style="display:none;">
                 <p>首次部署 – 请依次填写以下配置项，然后点击“加载镜像并启动服务”。</p>
                 <div id="config-form"></div>
@@ -191,7 +203,7 @@
             </div>
         </div>
 
-        <!-- 场景2：测试（简化提示） -->
+        <!-- 场景2：测试 -->
         <div id="view-test" class="form-section">
             <span class="back-link" onclick="goHome()">← 返回主页</span>
             <h2>测试执行</h2>
@@ -235,7 +247,52 @@
 
 <script>
     let stateCache = null;
+    let healthInterval = null;
 
+    // ========== 健康检查 ==========
+    function startHealthCheck() {
+        if (healthInterval) clearInterval(healthInterval);
+        healthInterval = setInterval(fetchHealth, 3000);
+        fetchHealth();
+    }
+    function stopHealthCheck() {
+        if (healthInterval) { clearInterval(healthInterval); healthInterval = null; }
+    }
+    async function fetchHealth() {
+        try {
+            const resp = await fetch('/api/health');
+            const data = await resp.json();
+            const textSpan = document.getElementById('status-text');
+            const detailSpan = document.getElementById('status-detail');
+            if (data.success) {
+                let statusText = '', color = '';
+                if (data.overall === 'running') {
+                    statusText = `✅ 运行中 (${data.running}/${data.total})`;
+                    color = '#27ae60';
+                } else if (data.overall === 'partial') {
+                    statusText = `⚠️ 部分异常 (${data.running}/${data.total})`;
+                    color = '#f39c12';
+                } else {
+                    statusText = `❌ 已停止 (${data.running}/${data.total})`;
+                    color = '#e74c3c';
+                }
+                textSpan.textContent = statusText;
+                textSpan.style.color = color;
+                if (data.containers && data.containers.length > 0) {
+                    const detail = data.containers.map(c => `${c.service}: ${c.state}`).join('; ');
+                    detailSpan.textContent = detail;
+                } else {
+                    detailSpan.textContent = '无容器';
+                }
+            } else {
+                textSpan.textContent = '❌ 无法获取状态';
+                textSpan.style.color = '#e74c3c';
+                detailSpan.textContent = data.error || '';
+            }
+        } catch (e) { /* 忽略网络错误 */ }
+    }
+
+    // ========== 状态管理 ==========
     async function fetchState() {
         const resp = await fetch('/api/state');
         stateCache = await resp.json();
@@ -275,6 +332,7 @@
         document.getElementById('view-home').style.display = 'block';
     }
 
+    // ========== 渲染表单 ==========
     function renderFullConfigForm() {
         const formDiv = document.getElementById('config-form');
         formDiv.innerHTML = `
@@ -349,71 +407,6 @@
         `;
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('btn-load-start').addEventListener('click', async () => {
-            await fetch('/api/deploy/backup', {method:'POST'});
-
-            const difyIp = document.getElementById('dify-ip-port')?.value;
-            if (difyIp) {
-                await fetch('/api/modify', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
-                });
-            }
-            const llmUrl = document.getElementById('llm-url')?.value;
-            const llmUid = document.getElementById('llm-uid')?.value;
-            const llmKey = document.getElementById('llm-key')?.value;
-            if (llmUrl && llmUid) {
-                await fetch('/api/modify', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
-                });
-            }
-            const embUrl = document.getElementById('emb-url')?.value;
-            const embUid = document.getElementById('emb-uid')?.value;
-            if (embUrl && embUid) {
-                await fetch('/api/modify', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
-                });
-            }
-            const dbHost = document.getElementById('db-host')?.value;
-            const dbPort = document.getElementById('db-port')?.value;
-            if (dbHost || dbPort) {
-                const dbValues = {};
-                if (dbHost) dbValues.host = dbHost;
-                if (dbPort) dbValues.port = dbPort;
-                const dbDb = document.getElementById('db-db')?.value;
-                if (dbDb) dbValues.db_db = dbDb;
-                const dbUser = document.getElementById('db-user')?.value;
-                if (dbUser) dbValues.db_user = dbUser;
-                const dbPwd = document.getElementById('db-password')?.value;
-                if (dbPwd) dbValues.db_password = dbPwd;
-                const dbType = document.getElementById('db-type')?.value;
-                if (dbType) dbValues.db_type = dbType;
-                const dbSchema = document.getElementById('db-schema')?.value;
-                if (dbSchema) dbValues.db_schema = dbSchema;
-                await fetch('/api/modify', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({module:'db', values: dbValues})
-                });
-            }
-
-            const loadResp = await fetch('/api/deploy/load_images', {method:'POST'});
-            const loadData = await loadResp.json();
-            showLog('deploy-log', loadData.message || loadData.error);
-
-            const startResp = await fetch('/api/deploy/start_service', {method:'POST'});
-            const startData = await startResp.json();
-            showLog('deploy-log', startData.message || startData.error, startData.success);
-            await fetchState();
-        });
-    });
-
     function showModule(module) {
         const div = document.getElementById('single-module-form');
         let html = '';
@@ -472,13 +465,126 @@
         showModule(module);
     }
 
-    document.getElementById('btn-restart-service').addEventListener('click', async () => {
-        const resp = await fetch('/api/deploy/start_service', {method:'POST'});
-        const data = await resp.json();
-        showLog('deploy-log2', data.message || data.error, data.success);
+    // ========== 保存所有配置（用于首次部署） ==========
+    async function saveAllConfigs() {
+        const difyIp = document.getElementById('dify-ip-port')?.value;
+        if (difyIp) {
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
+            });
+        }
+        const llmUrl = document.getElementById('llm-url')?.value;
+        const llmUid = document.getElementById('llm-uid')?.value;
+        const llmKey = document.getElementById('llm-key')?.value;
+        if (llmUrl && llmUid) {
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
+            });
+        }
+        const embUrl = document.getElementById('emb-url')?.value;
+        const embUid = document.getElementById('emb-uid')?.value;
+        if (embUrl && embUid) {
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
+            });
+        }
+        const dbHost = document.getElementById('db-host')?.value;
+        const dbPort = document.getElementById('db-port')?.value;
+        if (dbHost || dbPort) {
+            const dbValues = {};
+            if (dbHost) dbValues.host = dbHost;
+            if (dbPort) dbValues.port = dbPort;
+            const dbDb = document.getElementById('db-db')?.value;
+            if (dbDb) dbValues.db_db = dbDb;
+            const dbUser = document.getElementById('db-user')?.value;
+            if (dbUser) dbValues.db_user = dbUser;
+            const dbPwd = document.getElementById('db-password')?.value;
+            if (dbPwd) dbValues.db_password = dbPwd;
+            const dbType = document.getElementById('db-type')?.value;
+            if (dbType) dbValues.db_type = dbType;
+            const dbSchema = document.getElementById('db-schema')?.value;
+            if (dbSchema) dbValues.db_schema = dbSchema;
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'db', values: dbValues})
+            });
+        }
+    }
+
+    // ========== 流式处理通用函数 ==========
+    async function handleStream(url, logDivId, btnId) {
+        const logDiv = document.getElementById(logDivId);
+        const btn = document.getElementById(btnId);
+        logDiv.style.display = 'block';
+        logDiv.innerHTML = '';
+        btn.disabled = true;
+        btn.textContent = '执行中...';
+
+        try {
+            const response = await fetch(url, { method: 'POST' });
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    try {
+                        const data = JSON.parse(line);
+                        const step = data.step || '';
+                        const status = data.status || 'info';
+                        const color = status === 'success' ? '#27ae60' :
+                                      status === 'error' ? '#e74c3c' :
+                                      status === 'warning' ? '#f39c12' : '#ecf0f1';
+                        logDiv.innerHTML += `<div style="color: ${color};">${step}</div>`;
+                        logDiv.scrollTop = logDiv.scrollHeight;
+                    } catch (e) {
+                        logDiv.innerHTML += `<div>${line}</div>`;
+                    }
+                }
+            }
+        } catch (err) {
+            logDiv.innerHTML += `<div style="color: red;">请求失败: ${err.message}</div>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = btnId === 'btn-load-start' ? '加载镜像并启动服务' : '重启服务';
+            await fetchState();
+        }
+    }
+
+    // ========== 事件绑定 ==========
+    document.addEventListener('DOMContentLoaded', function() {
+        // 首次部署：保存配置 + 流式部署
+        const btnLoad = document.getElementById('btn-load-start');
+        if (btnLoad) {
+            btnLoad.addEventListener('click', async function() {
+                await saveAllConfigs();
+                await handleStream('/api/deploy/stream', 'deploy-log', 'btn-load-start');
+            });
+        }
+
+        // 重启服务按钮（非首次）
+        const btnRestart = document.getElementById('btn-restart-service');
+        if (btnRestart) {
+            btnRestart.addEventListener('click', async function() {
+                await handleStream('/api/service/restart/stream', 'deploy-log2', 'btn-restart-service');
+            });
+        }
     });
 
-    // 测试提示
+    // ========== 测试提示 ==========
     async function runTest() {
         const logDiv = document.getElementById('test-log');
         logDiv.style.display = 'block';
@@ -492,7 +598,7 @@
         }
     }
 
-    // 重置
+    // ========== 重置 ==========
     function showResetModal() {
         document.getElementById('reset-modal').classList.add('active');
     }
@@ -516,14 +622,11 @@
         document.getElementById('result-modal').classList.add('active');
     }
 
-    function showLog(divId, msg, isSuccess) {
-        const div = document.getElementById(divId);
-        div.style.display = 'block';
-        div.textContent = msg;
-        if (isSuccess !== undefined) div.style.color = isSuccess ? '#27ae60' : '#e74c3c';
-    }
-
-    window.onload = () => fetchState();
+    // ========== 初始化 ==========
+    window.onload = function() {
+        fetchState();
+        startHealthCheck();
+    };
 </script>
 </body>
 </html>
