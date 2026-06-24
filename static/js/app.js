@@ -1,6 +1,62 @@
 let stateCache = null;
 let healthInterval = null;
 
+// ========== 前端表单校验工具 ==========
+function isValidIPPort(value) {
+    if (!value) return false;
+    // 简单校验 IP:端口，允许 0-255 的数字，端口为数字
+    const regex = /^(\d{1,3}\.){3}\d{1,3}:\d+$/;
+    if (!regex.test(value)) return false;
+    // 进一步校验每个数字在 0-255 之间
+    const parts = value.split(':');
+    const ipParts = parts[0].split('.');
+    for (let p of ipParts) {
+        const num = parseInt(p, 10);
+        if (num < 0 || num > 255) return false;
+    }
+    return true;
+}
+
+function isValidUrl(value) {
+    if (!value) return false;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch (_) {
+        return false;
+    }
+}
+
+function isNotEmpty(value) {
+    return value && value.trim() !== '';
+}
+
+function markError(elementId, errorMsg) {
+    const el = document.getElementById(elementId);
+    if (el) {
+        el.style.border = '2px solid #e74c3c';
+        el.style.backgroundColor = '#fff5f5';
+        let hint = el.parentElement.querySelector('.error-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'error-hint';
+            hint.style.color = '#e74c3c';
+            hint.style.fontSize = '0.8rem';
+            hint.style.marginTop = '4px';
+            el.parentElement.appendChild(hint);
+        }
+        hint.textContent = errorMsg;
+    }
+}
+
+function clearAllErrors() {
+    document.querySelectorAll('.error-hint').forEach(el => el.remove());
+    document.querySelectorAll('.input-group input, .input-group select').forEach(el => {
+        el.style.border = '1px solid #ced4da';
+        el.style.backgroundColor = '';
+    });
+}
+
 // ========== 健康检查 ==========
 function startHealthCheck() {
     if (healthInterval) clearInterval(healthInterval);
@@ -195,17 +251,56 @@ function showModule(module) {
     document.getElementById('btn-restart-service').style.display = 'inline-block';
 }
 
+// ========== 修改后的 submitSingle（含校验） ==========
 async function submitSingle(module) {
+    // 清除旧错误
+    clearAllErrors();
+
     let values = {};
-    if (module === 'dify') values.ip_port = document.getElementById('dify-ip-single').value;
-    else if (module === 'llm') {
-        values.url = document.getElementById('llm-url-single').value;
-        values.uid = document.getElementById('llm-uid-single').value;
-        values.key = document.getElementById('llm-key-single').value;
+
+    if (module === 'dify') {
+        const ipPort = document.getElementById('dify-ip-single')?.value;
+        if (ipPort && !isValidIPPort(ipPort)) {
+            markError('dify-ip-single', '❌ 格式错误，请使用 IP:端口 (例: 127.0.0.1:8089)');
+            showResult('输入错误', '企业大脑地址格式不正确，请使用 IP:端口 格式');
+            return;
+        }
+        values.ip_port = ipPort;
+    } else if (module === 'llm') {
+        const url = document.getElementById('llm-url-single')?.value;
+        const uid = document.getElementById('llm-uid-single')?.value;
+        const key = document.getElementById('llm-key-single')?.value || '';
+        if (url && !isValidUrl(url)) {
+            markError('llm-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+            showResult('输入错误', 'LLM URL 格式错误');
+            return;
+        }
+        if ((url && !uid) || (!url && uid)) {
+            markError('llm-uid-single', '❌ URL 和 UID 必须同时填写');
+            showResult('输入错误', 'LLM URL 和 UID 必须同时填写');
+            return;
+        }
+        values.url = url;
+        values.uid = uid;
+        values.key = key;
     } else if (module === 'embedding') {
-        values.url = document.getElementById('emb-url-single').value;
-        values.uid = document.getElementById('emb-uid-single').value;
+        const url = document.getElementById('emb-url-single')?.value;
+        const uid = document.getElementById('emb-uid-single')?.value;
+        if (url && !isValidUrl(url)) {
+            markError('emb-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+            showResult('输入错误', 'Embedding URL 格式错误');
+            return;
+        }
+        if ((url && !uid) || (!url && uid)) {
+            markError('emb-uid-single', '❌ URL 和 UID 必须同时填写');
+            showResult('输入错误', 'Embedding URL 和 UID 必须同时填写');
+            return;
+        }
+        values.url = url;
+        values.uid = uid;
     }
+
+    // 校验通过，提交
     const resp = await fetch('/api/modify', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -217,9 +312,48 @@ async function submitSingle(module) {
     showModule(module);
 }
 
-// ========== 保存所有配置（用于首次部署） ==========
+// ========== 修改后的 saveAllConfigs（含校验） ==========
 async function saveAllConfigs() {
+    // 清除旧错误
+    clearAllErrors();
+
+    // ----- 1. 校验企业大脑 -----
     const difyIp = document.getElementById('dify-ip-port')?.value;
+    if (difyIp && !isValidIPPort(difyIp)) {
+        markError('dify-ip-port', '❌ 格式错误，请使用 IP:端口 (例: 127.0.0.1:8089)');
+        showResult('输入错误', '企业大脑地址格式不正确，请使用 IP:端口 格式');
+        return;
+    }
+
+    // ----- 2. 校验 LLM -----
+    const llmUrl = document.getElementById('llm-url')?.value;
+    const llmUid = document.getElementById('llm-uid')?.value;
+    if (llmUrl && !isValidUrl(llmUrl)) {
+        markError('llm-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+        showResult('输入错误', 'LLM URL 格式错误，请以 http:// 或 https:// 开头');
+        return;
+    }
+    if ((llmUrl && !llmUid) || (!llmUrl && llmUid)) {
+        markError('llm-uid', '❌ URL 和 UID 必须同时填写');
+        showResult('输入错误', 'LLM URL 和 UID 必须同时填写');
+        return;
+    }
+
+    // ----- 3. 校验 Embedding -----
+    const embUrl = document.getElementById('emb-url')?.value;
+    const embUid = document.getElementById('emb-uid')?.value;
+    if (embUrl && !isValidUrl(embUrl)) {
+        markError('emb-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+        showResult('输入错误', 'Embedding URL 格式错误，请以 http:// 或 https:// 开头');
+        return;
+    }
+    if ((embUrl && !embUid) || (!embUrl && embUid)) {
+        markError('emb-uid', '❌ URL 和 UID 必须同时填写');
+        showResult('输入错误', 'Embedding URL 和 UID 必须同时填写');
+        return;
+    }
+
+    // ----- 4. 校验通过，执行原有的保存逻辑（完全不变） -----
     if (difyIp) {
         await fetch('/api/modify', {
             method:'POST',
@@ -227,18 +361,14 @@ async function saveAllConfigs() {
             body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
         });
     }
-    const llmUrl = document.getElementById('llm-url')?.value;
-    const llmUid = document.getElementById('llm-uid')?.value;
-    const llmKey = document.getElementById('llm-key')?.value;
     if (llmUrl && llmUid) {
+        const llmKey = document.getElementById('llm-key')?.value || '';
         await fetch('/api/modify', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
         });
     }
-    const embUrl = document.getElementById('emb-url')?.value;
-    const embUid = document.getElementById('emb-uid')?.value;
     if (embUrl && embUid) {
         await fetch('/api/modify', {
             method:'POST',
