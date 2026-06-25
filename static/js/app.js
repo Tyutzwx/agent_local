@@ -1,13 +1,26 @@
 let stateCache = null;
 let healthInterval = null;
 
+// ========== 配置修改状态跟踪 ==========
+window._configChanged = false;
+
+function markConfigChanged() {
+    const inputs = document.querySelectorAll('#single-module-form input[data-initial-value]');
+    let hasChange = false;
+    inputs.forEach(input => {
+        const initial = input.getAttribute('data-initial-value') || '';
+        if (input.value !== initial) {
+            hasChange = true;
+        }
+    });
+    window._configChanged = hasChange;
+}
+
 // ========== 前端表单校验工具 ==========
 function isValidIPPort(value) {
     if (!value) return false;
-    // 简单校验 IP:端口，允许 0-255 的数字，端口为数字
     const regex = /^(\d{1,3}\.){3}\d{1,3}:\d+$/;
     if (!regex.test(value)) return false;
-    // 进一步校验每个数字在 0-255 之间
     const parts = value.split(':');
     const ipParts = parts[0].split('.');
     for (let p of ipParts) {
@@ -25,10 +38,6 @@ function isValidUrl(value) {
     } catch (_) {
         return false;
     }
-}
-
-function isNotEmpty(value) {
-    return value && value.trim() !== '';
 }
 
 function markError(elementId, errorMsg) {
@@ -224,7 +233,10 @@ function showModule(module) {
                 <h3>企业大脑地址</h3>
                 <div class="input-group">
                     <label>当前值：<span class="current-value">${stateCache.dify_url || '无'}</span></label>
-                    <input type="text" id="dify-ip-single" placeholder="例: 127.0.0.1:8089">
+                    <input type="text" id="dify-ip-single" 
+                           data-initial-value="${stateCache.dify_url || ''}"
+                           placeholder="例: 127.0.0.1:8089"
+                           oninput="markConfigChanged()">
                 </div>
                 <button class="btn" onclick="submitSingle('dify')">保存</button>
             </div>`;
@@ -232,38 +244,69 @@ function showModule(module) {
         html = `
             <div class="config-module">
                 <h3>大语言模型</h3>
-                <div class="input-group"><label>URL <span class="current-value">(${stateCache.llm_url || '无'})</span></label><input type="text" id="llm-url-single"></div>
-                <div class="input-group"><label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label><input type="text" id="llm-uid-single"></div>
-                <div class="input-group"><label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label><input type="text" id="llm-key-single"></div>
+                <div class="input-group">
+                    <label>URL <span class="current-value">(${stateCache.llm_url || '无'})</span></label>
+                    <input type="text" id="llm-url-single" 
+                           data-initial-value="${stateCache.llm_url || ''}"
+                           placeholder="例: http://127.0.0.1:16000/v1"
+                           oninput="markConfigChanged()">
+                </div>
+                <div class="input-group">
+                    <label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label>
+                    <input type="text" id="llm-uid-single" 
+                           data-initial-value="${stateCache.llm_uid || ''}"
+                           placeholder="模型ID"
+                           oninput="markConfigChanged()">
+                </div>
+                <div class="input-group">
+                    <label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label>
+                    <input type="text" id="llm-key-single" 
+                           data-initial-value="${stateCache.llm_key || ''}"
+                           placeholder="留空则使用默认"
+                           oninput="markConfigChanged()">
+                </div>
                 <button class="btn" onclick="submitSingle('llm')">保存</button>
             </div>`;
     } else if (module === 'embedding') {
         html = `
             <div class="config-module">
                 <h3>Embedding 模型</h3>
-                <div class="input-group"><label>URL <span class="current-value">(${stateCache.emb_url || '无'})</span></label><input type="text" id="emb-url-single"></div>
-                <div class="input-group"><label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label><input type="text" id="emb-uid-single"></div>
+                <div class="input-group">
+                    <label>URL <span class="current-value">(${stateCache.emb_url || '无'})</span></label>
+                    <input type="text" id="emb-url-single" 
+                           data-initial-value="${stateCache.emb_url || ''}"
+                           placeholder="例: http://127.0.0.1:16001/v1/embeddings"
+                           oninput="markConfigChanged()">
+                </div>
+                <div class="input-group">
+                    <label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label>
+                    <input type="text" id="emb-uid-single" 
+                           data-initial-value="${stateCache.emb_uid || ''}"
+                           placeholder="模型ID"
+                           oninput="markConfigChanged()">
+                </div>
                 <button class="btn" onclick="submitSingle('embedding')">保存</button>
             </div>`;
     }
     div.innerHTML = html;
     div.style.display = 'block';
     document.getElementById('btn-restart-service').style.display = 'inline-block';
+    
+    // 重置“配置已修改”标记（每次切换模块时重置）
+    window._configChanged = false;
 }
 
-// ========== 修改后的 submitSingle（含校验） ==========
+// ========== submitSingle（非首次部署，单模块保存，统一错误收集） ==========
 async function submitSingle(module) {
-    // 清除旧错误
     clearAllErrors();
-
+    let errors = [];
     let values = {};
 
     if (module === 'dify') {
         const ipPort = document.getElementById('dify-ip-single')?.value;
         if (ipPort && !isValidIPPort(ipPort)) {
-            markError('dify-ip-single', '❌ 格式错误，请使用 IP:端口 (例: 127.0.0.1:8089)');
-            showResult('输入错误', '企业大脑地址格式不正确，请使用 IP:端口 格式');
-            return;
+            markError('dify-ip-single', '❌ 格式错误，请使用 IP:端口');
+            errors.push('企业大脑地址格式不正确，请使用 IP:端口 格式');
         }
         values.ip_port = ipPort;
     } else if (module === 'llm') {
@@ -272,13 +315,11 @@ async function submitSingle(module) {
         const key = document.getElementById('llm-key-single')?.value || '';
         if (url && !isValidUrl(url)) {
             markError('llm-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-            showResult('输入错误', 'LLM URL 格式错误');
-            return;
+            errors.push('LLM URL 格式错误，请以 http:// 或 https:// 开头');
         }
         if ((url && !uid) || (!url && uid)) {
             markError('llm-uid-single', '❌ URL 和 UID 必须同时填写');
-            showResult('输入错误', 'LLM URL 和 UID 必须同时填写');
-            return;
+            errors.push('LLM URL 和 UID 必须同时填写');
         }
         values.url = url;
         values.uid = uid;
@@ -288,16 +329,24 @@ async function submitSingle(module) {
         const uid = document.getElementById('emb-uid-single')?.value;
         if (url && !isValidUrl(url)) {
             markError('emb-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-            showResult('输入错误', 'Embedding URL 格式错误');
-            return;
+            errors.push('Embedding URL 格式错误，请以 http:// 或 https:// 开头');
         }
         if ((url && !uid) || (!url && uid)) {
             markError('emb-uid-single', '❌ URL 和 UID 必须同时填写');
-            showResult('输入错误', 'Embedding URL 和 UID 必须同时填写');
-            return;
+            errors.push('Embedding URL 和 UID 必须同时填写');
         }
         values.url = url;
         values.uid = uid;
+    }
+
+    // 统一展示所有错误（编号列表）
+    if (errors.length > 0) {
+        let msg = '⚠️ 共发现 ' + errors.length + ' 个问题：\n\n';
+        errors.forEach((e, i) => {
+            msg += (i + 1) + '. ' + e + '\n';
+        });
+        showResult('输入错误', msg);
+        return;
     }
 
     // 校验通过，提交
@@ -307,22 +356,24 @@ async function submitSingle(module) {
         body: JSON.stringify({module, values})
     });
     const data = await resp.json();
-    showResult(data.success ? '成功' : '失败', data.message || data.error);
+    showResult(data.success ? '✅ 保存成功' : '❌ 保存失败', data.message || data.error);
     await fetchState();
-    showModule(module);
+    if (data.success) {
+        window._configChanged = false;
+        showModule(module);
+    }
 }
 
-// ========== 修改后的 saveAllConfigs（含校验） ==========
+// ========== saveAllConfigs（首次部署完整表单，统一错误收集，返回 true/false） ==========
 async function saveAllConfigs() {
-    // 清除旧错误
     clearAllErrors();
+    let errors = [];
 
     // ----- 1. 校验企业大脑 -----
     const difyIp = document.getElementById('dify-ip-port')?.value;
     if (difyIp && !isValidIPPort(difyIp)) {
-        markError('dify-ip-port', '❌ 格式错误，请使用 IP:端口 (例: 127.0.0.1:8089)');
-        showResult('输入错误', '企业大脑地址格式不正确，请使用 IP:端口 格式');
-        return;
+        markError('dify-ip-port', '❌ 格式错误，请使用 IP:端口');
+        errors.push('【企业大脑】地址格式不正确，请使用 IP:端口 格式 (例: 127.0.0.1:8089)');
     }
 
     // ----- 2. 校验 LLM -----
@@ -330,13 +381,11 @@ async function saveAllConfigs() {
     const llmUid = document.getElementById('llm-uid')?.value;
     if (llmUrl && !isValidUrl(llmUrl)) {
         markError('llm-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-        showResult('输入错误', 'LLM URL 格式错误，请以 http:// 或 https:// 开头');
-        return;
+        errors.push('【LLM】URL 格式错误，请以 http:// 或 https:// 开头');
     }
     if ((llmUrl && !llmUid) || (!llmUrl && llmUid)) {
         markError('llm-uid', '❌ URL 和 UID 必须同时填写');
-        showResult('输入错误', 'LLM URL 和 UID 必须同时填写');
-        return;
+        errors.push('【LLM】URL 和 UID 必须同时填写');
     }
 
     // ----- 3. 校验 Embedding -----
@@ -344,59 +393,112 @@ async function saveAllConfigs() {
     const embUid = document.getElementById('emb-uid')?.value;
     if (embUrl && !isValidUrl(embUrl)) {
         markError('emb-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-        showResult('输入错误', 'Embedding URL 格式错误，请以 http:// 或 https:// 开头');
-        return;
+        errors.push('【Embedding】URL 格式错误，请以 http:// 或 https:// 开头');
     }
     if ((embUrl && !embUid) || (!embUrl && embUid)) {
         markError('emb-uid', '❌ URL 和 UID 必须同时填写');
-        showResult('输入错误', 'Embedding URL 和 UID 必须同时填写');
-        return;
+        errors.push('【Embedding】URL 和 UID 必须同时填写');
     }
 
-    // ----- 4. 校验通过，执行原有的保存逻辑（完全不变） -----
-    if (difyIp) {
-        await fetch('/api/modify', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
-        });
+    // ----- 4. 校验数据库（仅当填写了才校验） -----
+    const dbHost = document.getElementById('db-host')?.value?.trim();
+    const dbPort = document.getElementById('db-port')?.value?.trim();
+    const dbDb = document.getElementById('db-db')?.value?.trim();
+    const dbUser = document.getElementById('db-user')?.value?.trim();
+    const dbSchema = document.getElementById('db-schema')?.value?.trim();
+    // 密码不校验格式（允许任意字符）
+
+    // 4.1 主机名
+    if (dbHost) {
+        if (!/^[a-zA-Z0-9.-]+$/.test(dbHost)) {
+            markError('db-host', '❌ 主机名只能包含字母、数字、点、横线');
+            errors.push('【数据库】主机名只能包含字母、数字、点、横线');
+        }
     }
-    if (llmUrl && llmUid) {
-        const llmKey = document.getElementById('llm-key')?.value || '';
-        await fetch('/api/modify', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
-        });
+
+    // 4.2 端口
+    if (dbPort) {
+        const portNum = Number(dbPort);
+        if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+            markError('db-port', '❌ 端口必须是 1-65535 的数字');
+            errors.push('【数据库】端口必须是 1-65535 的数字');
+        }
     }
-    if (embUrl && embUid) {
-        await fetch('/api/modify', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
-        });
+
+    // 4.3 数据库名
+    if (dbDb && !/^[a-zA-Z0-9_]+$/.test(dbDb)) {
+        markError('db-db', '❌ 数据库名只能包含字母、数字、下划线');
+        errors.push('【数据库】数据库名只能包含字母、数字、下划线');
     }
-    const dbHost = document.getElementById('db-host')?.value;
-    const dbPort = document.getElementById('db-port')?.value;
-    if (dbHost || dbPort) {
-        const dbValues = {};
-        if (dbHost) dbValues.host = dbHost;
-        if (dbPort) dbValues.port = dbPort;
-        const dbDb = document.getElementById('db-db')?.value;
-        if (dbDb) dbValues.db_db = dbDb;
-        const dbUser = document.getElementById('db-user')?.value;
-        if (dbUser) dbValues.db_user = dbUser;
-        const dbPwd = document.getElementById('db-password')?.value;
-        if (dbPwd) dbValues.db_password = dbPwd;
-        const dbType = document.getElementById('db-type')?.value;
-        if (dbType) dbValues.db_type = dbType;
-        const dbSchema = document.getElementById('db-schema')?.value;
-        if (dbSchema) dbValues.db_schema = dbSchema;
-        await fetch('/api/modify', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({module:'db', values: dbValues})
+
+    // 4.4 用户名
+    if (dbUser && !/^[a-zA-Z0-9_]+$/.test(dbUser)) {
+        markError('db-user', '❌ 用户名只能包含字母、数字、下划线');
+        errors.push('【数据库】用户名只能包含字母、数字、下划线');
+    }
+
+    // 4.5 Schema
+    if (dbSchema && !/^[a-zA-Z0-9_]+$/.test(dbSchema)) {
+        markError('db-schema', '❌ Schema 只能包含字母、数字、下划线');
+        errors.push('【数据库】Schema 只能包含字母、数字、下划线');
+    }
+
+    // ----- 统一展示所有错误（编号列表） -----
+    if (errors.length > 0) {
+        let msg = '⚠️ 共发现 ' + errors.length + ' 个问题，请修正后重试：\n\n';
+        errors.forEach((e, i) => {
+            msg += (i + 1) + '. ' + e + '\n';
         });
+        showResult('输入错误', msg);
+        return false;
+    }
+
+    // ----- 5. 保存配置（原有逻辑，完全不变） -----
+    try {
+        if (difyIp) {
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'dify', values:{ip_port: difyIp}})
+            });
+        }
+        if (llmUrl && llmUid) {
+            const llmKey = document.getElementById('llm-key')?.value || '';
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'llm', values:{url:llmUrl, uid:llmUid, key:llmKey}})
+            });
+        }
+        if (embUrl && embUid) {
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
+            });
+        }
+        // 数据库保存（复用 db 模块）
+        if (dbHost || dbPort || dbDb || dbUser || document.getElementById('db-password')?.value || document.getElementById('db-type')?.value || dbSchema) {
+            const dbValues = {};
+            if (dbHost) dbValues.host = dbHost;
+            if (dbPort) dbValues.port = dbPort;
+            if (dbDb) dbValues.db_db = dbDb;
+            if (dbUser) dbValues.db_user = dbUser;
+            const dbPwd = document.getElementById('db-password')?.value;
+            if (dbPwd) dbValues.db_password = dbPwd;
+            const dbType = document.getElementById('db-type')?.value;
+            if (dbType) dbValues.db_type = dbType;
+            if (dbSchema) dbValues.db_schema = dbSchema;
+            await fetch('/api/modify', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({module:'db', values: dbValues})
+            });
+        }
+        return true;
+    } catch (error) {
+        showResult('保存失败', error.message);
+        return false;
     }
 }
 
@@ -448,19 +550,25 @@ async function handleStream(url, logDivId, btnId) {
 
 // ========== 事件绑定 ==========
 document.addEventListener('DOMContentLoaded', function() {
-    // 首次部署：保存配置 + 流式部署
+    // 首次部署：保存配置 + 流式部署（只有保存成功才执行部署）
     const btnLoad = document.getElementById('btn-load-start');
     if (btnLoad) {
         btnLoad.addEventListener('click', async function() {
-            await saveAllConfigs();
+            const saved = await saveAllConfigs();
+            if (!saved) return;
             await handleStream('/api/deploy/stream', 'deploy-log', 'btn-load-start');
         });
     }
 
-    // 重启服务按钮（非首次）
+    // 重启服务按钮（非首次）- 增加拦截：检测是否有未保存的配置修改
     const btnRestart = document.getElementById('btn-restart-service');
     if (btnRestart) {
         btnRestart.addEventListener('click', async function() {
+            // 检查是否有未保存的配置修改
+            if (window._configChanged) {
+                showResult('⚠️ 配置未保存', '检测到配置已被修改但尚未保存。\n\n请先点击对应模块的“保存”按钮，保存成功后再重启服务。');
+                return;
+            }
             await handleStream('/api/service/restart/stream', 'deploy-log2', 'btn-restart-service');
         });
     }
