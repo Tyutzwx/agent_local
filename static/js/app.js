@@ -4,7 +4,16 @@ let healthInterval = null;
 // ========== 配置修改状态跟踪 ==========
 window._configChanged = false;
 
-function markConfigChanged() {
+function markConfigChanged(element) {
+    // 清除该输入框自身的错误提示
+    if (element) {
+        element.style.border = '1px solid #ced4da';
+        element.style.backgroundColor = '';
+        const hint = element.parentElement.querySelector('.error-hint');
+        if (hint) hint.remove();
+    }
+    
+    // 更新全局修改标记
     const inputs = document.querySelectorAll('#single-module-form input[data-initial-value]');
     let hasChange = false;
     inputs.forEach(input => {
@@ -134,6 +143,7 @@ async function showScene(scene) {
             document.getElementById('single-module-form').style.display = 'none';
             document.getElementById('btn-restart-service').style.display = 'none';
             document.getElementById('deploy-log2').style.display = 'none';
+            window._configChanged = false;
         }
     } else if (scene === 'test') {
         document.getElementById('view-test').classList.add('active');
@@ -236,7 +246,7 @@ function showModule(module) {
                     <input type="text" id="dify-ip-single" 
                            data-initial-value="${stateCache.dify_url || ''}"
                            placeholder="例: 127.0.0.1:8089"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <button class="btn" onclick="submitSingle('dify')">保存</button>
             </div>`;
@@ -249,21 +259,21 @@ function showModule(module) {
                     <input type="text" id="llm-url-single" 
                            data-initial-value="${stateCache.llm_url || ''}"
                            placeholder="例: http://127.0.0.1:16000/v1"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <div class="input-group">
                     <label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label>
                     <input type="text" id="llm-uid-single" 
                            data-initial-value="${stateCache.llm_uid || ''}"
                            placeholder="模型ID"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <div class="input-group">
                     <label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label>
                     <input type="text" id="llm-key-single" 
                            data-initial-value="${stateCache.llm_key || ''}"
                            placeholder="留空则使用默认"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <button class="btn" onclick="submitSingle('llm')">保存</button>
             </div>`;
@@ -276,14 +286,14 @@ function showModule(module) {
                     <input type="text" id="emb-url-single" 
                            data-initial-value="${stateCache.emb_url || ''}"
                            placeholder="例: http://127.0.0.1:16001/v1/embeddings"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <div class="input-group">
                     <label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label>
                     <input type="text" id="emb-uid-single" 
                            data-initial-value="${stateCache.emb_uid || ''}"
                            placeholder="模型ID"
-                           oninput="markConfigChanged()">
+                           oninput="markConfigChanged(this)">
                 </div>
                 <button class="btn" onclick="submitSingle('embedding')">保存</button>
             </div>`;
@@ -291,12 +301,10 @@ function showModule(module) {
     div.innerHTML = html;
     div.style.display = 'block';
     document.getElementById('btn-restart-service').style.display = 'inline-block';
-    
-    // 重置“配置已修改”标记（每次切换模块时重置）
     window._configChanged = false;
 }
 
-// ========== submitSingle（非首次部署，单模块保存，统一错误收集） ==========
+// ========== submitSingle（非首次部署） ==========
 async function submitSingle(module) {
     clearAllErrors();
     let errors = [];
@@ -339,7 +347,6 @@ async function submitSingle(module) {
         values.uid = uid;
     }
 
-    // 统一展示所有错误（编号列表）
     if (errors.length > 0) {
         let msg = '⚠️ 共发现 ' + errors.length + ' 个问题：\n\n';
         errors.forEach((e, i) => {
@@ -349,7 +356,6 @@ async function submitSingle(module) {
         return;
     }
 
-    // 校验通过，提交
     const resp = await fetch('/api/modify', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -364,19 +370,17 @@ async function submitSingle(module) {
     }
 }
 
-// ========== saveAllConfigs（首次部署完整表单，统一错误收集，返回 true/false） ==========
+// ========== saveAllConfigs（首次部署完整表单） ==========
 async function saveAllConfigs() {
     clearAllErrors();
     let errors = [];
 
-    // ----- 1. 校验企业大脑 -----
     const difyIp = document.getElementById('dify-ip-port')?.value;
     if (difyIp && !isValidIPPort(difyIp)) {
         markError('dify-ip-port', '❌ 格式错误，请使用 IP:端口');
         errors.push('【企业大脑】地址格式不正确，请使用 IP:端口 格式 (例: 127.0.0.1:8089)');
     }
 
-    // ----- 2. 校验 LLM -----
     const llmUrl = document.getElementById('llm-url')?.value;
     const llmUid = document.getElementById('llm-uid')?.value;
     if (llmUrl && !isValidUrl(llmUrl)) {
@@ -388,7 +392,6 @@ async function saveAllConfigs() {
         errors.push('【LLM】URL 和 UID 必须同时填写');
     }
 
-    // ----- 3. 校验 Embedding -----
     const embUrl = document.getElementById('emb-url')?.value;
     const embUid = document.getElementById('emb-uid')?.value;
     if (embUrl && !isValidUrl(embUrl)) {
@@ -400,23 +403,17 @@ async function saveAllConfigs() {
         errors.push('【Embedding】URL 和 UID 必须同时填写');
     }
 
-    // ----- 4. 校验数据库（仅当填写了才校验） -----
+    // 数据库字段校验（可选）
     const dbHost = document.getElementById('db-host')?.value?.trim();
     const dbPort = document.getElementById('db-port')?.value?.trim();
     const dbDb = document.getElementById('db-db')?.value?.trim();
     const dbUser = document.getElementById('db-user')?.value?.trim();
     const dbSchema = document.getElementById('db-schema')?.value?.trim();
-    // 密码不校验格式（允许任意字符）
 
-    // 4.1 主机名
-    if (dbHost) {
-        if (!/^[a-zA-Z0-9.-]+$/.test(dbHost)) {
-            markError('db-host', '❌ 主机名只能包含字母、数字、点、横线');
-            errors.push('【数据库】主机名只能包含字母、数字、点、横线');
-        }
+    if (dbHost && !/^[a-zA-Z0-9.-]+$/.test(dbHost)) {
+        markError('db-host', '❌ 主机名只能包含字母、数字、点、横线');
+        errors.push('【数据库】主机名只能包含字母、数字、点、横线');
     }
-
-    // 4.2 端口
     if (dbPort) {
         const portNum = Number(dbPort);
         if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
@@ -424,26 +421,19 @@ async function saveAllConfigs() {
             errors.push('【数据库】端口必须是 1-65535 的数字');
         }
     }
-
-    // 4.3 数据库名
     if (dbDb && !/^[a-zA-Z0-9_]+$/.test(dbDb)) {
         markError('db-db', '❌ 数据库名只能包含字母、数字、下划线');
         errors.push('【数据库】数据库名只能包含字母、数字、下划线');
     }
-
-    // 4.4 用户名
     if (dbUser && !/^[a-zA-Z0-9_]+$/.test(dbUser)) {
         markError('db-user', '❌ 用户名只能包含字母、数字、下划线');
         errors.push('【数据库】用户名只能包含字母、数字、下划线');
     }
-
-    // 4.5 Schema
     if (dbSchema && !/^[a-zA-Z0-9_]+$/.test(dbSchema)) {
         markError('db-schema', '❌ Schema 只能包含字母、数字、下划线');
         errors.push('【数据库】Schema 只能包含字母、数字、下划线');
     }
 
-    // ----- 统一展示所有错误（编号列表） -----
     if (errors.length > 0) {
         let msg = '⚠️ 共发现 ' + errors.length + ' 个问题，请修正后重试：\n\n';
         errors.forEach((e, i) => {
@@ -453,7 +443,6 @@ async function saveAllConfigs() {
         return false;
     }
 
-    // ----- 5. 保存配置（原有逻辑，完全不变） -----
     try {
         if (difyIp) {
             await fetch('/api/modify', {
@@ -477,7 +466,6 @@ async function saveAllConfigs() {
                 body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
             });
         }
-        // 数据库保存（复用 db 模块）
         if (dbHost || dbPort || dbDb || dbUser || document.getElementById('db-password')?.value || document.getElementById('db-type')?.value || dbSchema) {
             const dbValues = {};
             if (dbHost) dbValues.host = dbHost;
@@ -502,7 +490,7 @@ async function saveAllConfigs() {
     }
 }
 
-// ========== 流式处理通用函数 ==========
+// ========== 流式处理通用函数（含错误检测） ==========
 async function handleStream(url, logDivId, btnId) {
     const logDiv = document.getElementById(logDivId);
     const btn = document.getElementById(btnId);
@@ -510,6 +498,7 @@ async function handleStream(url, logDivId, btnId) {
     logDiv.innerHTML = '';
     btn.disabled = true;
     btn.textContent = '执行中...';
+    let hasError = false;
 
     try {
         const response = await fetch(url, { method: 'POST' });
@@ -534,6 +523,9 @@ async function handleStream(url, logDivId, btnId) {
                                   status === 'warning' ? '#f39c12' : '#ecf0f1';
                     logDiv.innerHTML += `<div style="color: ${color};">${step}</div>`;
                     logDiv.scrollTop = logDiv.scrollHeight;
+                    if (status === 'error') {
+                        hasError = true;
+                    }
                 } catch (e) {
                     logDiv.innerHTML += `<div>${line}</div>`;
                 }
@@ -541,30 +533,57 @@ async function handleStream(url, logDivId, btnId) {
         }
     } catch (err) {
         logDiv.innerHTML += `<div style="color: red;">请求失败: ${err.message}</div>`;
+        hasError = true;
     } finally {
         btn.disabled = false;
         btn.textContent = btnId === 'btn-load-start' ? '加载镜像并启动服务' : '重启服务';
         await fetchState();
+
+        if (hasError) {
+            showResult('❌ 部署失败', '部署过程中发生了错误，请检查日志信息。\n\n点击确定返回主页。', function() {
+                goHome();
+            });
+        }
+    }
+}
+
+// ========== 模态框（支持回调） ==========
+function showResult(title, msg, callback) {
+    document.getElementById('result-title').textContent = title;
+    document.getElementById('result-msg').textContent = msg;
+    document.getElementById('result-modal').classList.add('active');
+    window._resultCallback = callback || null;
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+    if (id === 'result-modal' && window._resultCallback) {
+        const cb = window._resultCallback;
+        window._resultCallback = null;
+        cb();
     }
 }
 
 // ========== 事件绑定 ==========
 document.addEventListener('DOMContentLoaded', function() {
-    // 首次部署：保存配置 + 流式部署（只有保存成功才执行部署）
     const btnLoad = document.getElementById('btn-load-start');
     if (btnLoad) {
         btnLoad.addEventListener('click', async function() {
+            const wasFirstTime = stateCache ? stateCache.is_first_time : true;
             const saved = await saveAllConfigs();
             if (!saved) return;
             await handleStream('/api/deploy/stream', 'deploy-log', 'btn-load-start');
+            if (wasFirstTime) {
+                showResult('🎉 首次部署完成', '服务已成功部署并启动！\n\n点击确定返回首页。', function() {
+                    goHome();
+                });
+            }
         });
     }
 
-    // 重启服务按钮（非首次）- 增加拦截：检测是否有未保存的配置修改
     const btnRestart = document.getElementById('btn-restart-service');
     if (btnRestart) {
         btnRestart.addEventListener('click', async function() {
-            // 检查是否有未保存的配置修改
             if (window._configChanged) {
                 showResult('⚠️ 配置未保存', '检测到配置已被修改但尚未保存。\n\n请先点击对应模块的“保存”按钮，保存成功后再重启服务。');
                 return;
@@ -592,9 +611,6 @@ async function runTest() {
 function showResetModal() {
     document.getElementById('reset-modal').classList.add('active');
 }
-function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
-}
 async function confirmReset() {
     closeModal('reset-modal');
     const resp = await fetch('/api/reset', {
@@ -604,12 +620,6 @@ async function confirmReset() {
     });
     const data = await resp.json();
     showResult(data.success ? '重置完成' : '重置失败', data.message || data.error);
-}
-
-function showResult(title, msg) {
-    document.getElementById('result-title').textContent = title;
-    document.getElementById('result-msg').textContent = msg;
-    document.getElementById('result-modal').classList.add('active');
 }
 
 // ========== 初始化 ==========
