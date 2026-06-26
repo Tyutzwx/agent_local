@@ -19,7 +19,7 @@
 | :--- | :--- |
 | **配置管理** | Web 表单填写 Dify/LLM/Embedding/数据库配置，自动生成配置文件 |
 | **镜像加载** | 一键加载 `algorithm/images/` 目录下所有 Docker 镜像 |
-| **服务启停** | 一键执行 `docker-compose up -d`，支持首次部署和配置修改后重启 |
+| **服务启停** | 一键执行 `docker-compose -f docker-compose.control.yaml up -d`，支持首次部署和配置修改后重启 |
 | **流式日志** | 部署过程实时推送日志（备份 → 加载镜像 → 启动服务），每一步都可见 |
 | **健康检查** | 自动轮询当前 Compose 项目的容器状态，显示运行/异常/停止 |
 | **配置重置** | 一键恢复至初始备份配置（二次确认） |
@@ -76,10 +76,10 @@ agent_local/
 │   │   ├── gunicorn.conf.py
 │   │   └── requirements.txt
 │   ├── Dockerfile                    # 容器镜像构建文件
-│   ├── docker-compose.yaml           # 容器编排启动文件
+│   ├── docker-compose.control.yaml           # 容器编排启动文件
 │   └── .dockerignore                 # Docker 构建排除文件
 ├── algorithm/                        # 算法组件（独立）
-│   ├── docker-compose.yaml           # 5 个微服务编排文件
+│   ├── docker-compose.control.yaml           # 5 个微服务编排文件
 │   ├── images/                       # Docker 镜像 tar 包
 │   │   ├── agent_local_deep.tar
 │   │   ├── agent_mysql_deep.tar
@@ -95,7 +95,7 @@ agent_local/
 │   │   └── connect_websocket.py
 │   └── tools/                        # 工具与备份文件
 │       ├── docker-compose-Linux-x86_64
-│       ├── docker-compose.yaml.bak
+│       ├── docker-compose.control.yaml.bak
 │       └── config.cfg.bak
 ├── logs/                             # 统一日志目录（运行时生成）
 ├── deploy.sh                         # 原始部署脚本（已适配新结构）
@@ -119,7 +119,7 @@ agent_local/
 
 ```bash
 cd /data/tuoni/agent_local/web
-docker-compose up -d
+docker-compose -f docker-compose.control.yaml up -d
 ```
 
 ### 验证
@@ -136,9 +136,9 @@ curl http://127.0.0.1:9002/api/health
 
 | 操作 | 命令 |
 | :--- | :--- |
-| **启动** | `cd web && docker-compose up -d` |
-| **停止** | `cd web && docker-compose down` |
-| **重启** | `cd web && docker-compose restart` |
+| **启动** | `cd web cd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yamlcd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yaml docker-compose -f docker-compose.control.yaml up -d` |
+| **停止** | `cd web cd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yamlcd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yaml docker-compose -f docker-compose.control.yaml down` |
+| **重启** | `cd web cd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yamlcd web cd web && docker-composecd web && docker-compose docker-compose -f docker-compose.control.yaml docker-compose -f docker-compose.control.yaml restart` |
 | **查看日志** | `docker logs -f agent-control` |
 | **进入容器** | `docker exec -it agent-control bash` |
 
@@ -211,7 +211,7 @@ curl http://127.0.0.1:9002/api/health
 ```
 web/
 ├── Dockerfile              # 镜像构建（Python 3.10-slim + 依赖）
-├── docker-compose.yaml     # 容器编排（端口映射 + 挂载）
+├── docker-compose.control.yaml     # 容器编排（端口映射 + 挂载）
 └── src/                    # 应用代码（打包进镜像）
 ```
 
@@ -249,6 +249,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 | `MYSQL_HOST` | MySQL 主机名 |
 | `MYSQL_PORT` | MySQL 端口 |
 
+**重置后的配置为algorithm/tools/docker-compose.yaml.bak中的内容**
 
 ## 🧪 测试与排错
 
@@ -286,7 +287,7 @@ tail -f /data/tuoni/agent_local/logs/gunicorn_error.log
 | :--- | :--- | :--- |
 | 健康检查返回空列表 | 容器名不在白名单中 | 检查 `health.py` 中的 `target_names` |
 | 重置时 `deploy.log` 被占用 | 文件被进程锁定 | 代码已支持删除失败时清空内容 |
-| 容器内找不到 `docker` 命令 | 未挂载 Docker 二进制 | 检查 `docker-compose.yaml` 挂载配置 |
+| 容器内找不到 `docker` 命令 | 未挂载 Docker 二进制 | 检查 `docker-compose.control.yaml` 挂载配置 |
 | 端口 9002 被占用 | 旧进程未清理 | `ss -tlnp \| grep 9002` 找到并停止 |
 
 
@@ -304,25 +305,3 @@ cd /data/tuoni/agent_local
 2. 模型测试和业务流程测试
 3. 服务配置重置
 
-
-## 📊 重构前后对比
-
-| 对比项 | 重构前 | 重构后 |
-| :--- | :--- | :--- |
-| **代码组织** | 混乱，文件散落各处 | 清晰分层（`web/` + `algorithm/`） |
-| **日志管理** | 散落在根目录 | 统一在 `logs/` 目录 |
-| **部署方式** | 手动 `nohup` 启动 | 一键 `docker-compose up -d` |
-| **环境一致性** | 依赖宿主机配置 | 容器内环境完全一致 |
-| **迁移成本** | 高（需重新配置环境） | 低（只需 Docker） |
-| **可维护性** | 低（路径散落） | 高（路径集中管理） |
-
-
-## 🚀 后续优化方向
-
-| 优先级 | 优化项 | 说明 |
-| :--- | :--- | :--- |
-| P0 | 镜像推送到私有仓库 | 发布 `agent-control:latest` 到 Harbor |
-| P1 | CI/CD 自动化构建 | GitHub Actions 自动构建镜像 |
-| P1 | 多环境配置支持 | 开发/测试/生产环境配置分离 |
-| P2 | Kubernetes 部署支持 | 编写 Deployment + Service YAML |
-| P2 | 监控告警集成 | 接入 Prometheus + Alertmanager |
