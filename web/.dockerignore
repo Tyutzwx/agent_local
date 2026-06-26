@@ -1,0 +1,55 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 日志文件
+*.log
+*.pid
+*.out
+
+# 大文件
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.gz
+
+# 具体大文件
+agent_local_720.tar
+
+# 无关目录
+agent_local_734/
+
+# Git 相关
+.git/
+.gitignore
+.gitattributes
+
+# 运行时文件
+deploy.log
+gunicorn.pid
+
+# 历史参考文件
+app_zong.py
+deploy.sh
+
+# IDE 目录
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 备份文件
+tools/*.bak
+tools/*.backup
+
+# 测试/临时文件
+test/__pycache__/
+*.tmp
+
+# 挂载目录（运行时挂载，不进镜像）
+images/
+tools/
+test/config.cfg
+docker-compose.yaml

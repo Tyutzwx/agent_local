@@ -1,0 +1,11 @@
+bind = "0.0.0.0:9002"
+workers = 4
+worker_class = "sync"
+max_requests = 1000
+max_requests_jitter = 100
+timeout = 120
+errorlog = "logs/gunicorn_error.log"
+accesslog = "logs/gunicorn_access.log"
+loglevel = "info"
+pidfile = "logs/gunicor.pid"
+graceful_timeout = 60

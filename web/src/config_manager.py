@@ -7,10 +7,10 @@ import re
 from pathlib import Path
 
 # 项目根目录（与 docker-compose.yaml 同级）
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 COMPOSE_FILE = PROJECT_ROOT / "docker-compose.yaml"
 CONFIG_FILE = PROJECT_ROOT / "test" / "config.cfg"
-DEPLOY_LOG = PROJECT_ROOT / "deploy.log"
+DEPLOY_LOG = PROJECT_ROOT / "logs" / "deploy.log"
 TOOLS_DIR = PROJECT_ROOT / "tools"
 IMAGES_DIR = PROJECT_ROOT / "images"
 
@@ -90,3 +90,4 @@ def write_config_cfg(updates: dict):
 
     with open(CONFIG_FILE, 'w') as f:
         f.writelines(new_lines)
+PROJECT_NAME = "algorithm"

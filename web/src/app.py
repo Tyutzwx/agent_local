@@ -7,6 +7,7 @@ Agent Deploy Web 后端
 """
 import os
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -22,7 +23,7 @@ from docker_manager import load_images, start_service, backup_config, execute_co
 from health import get_health_status
 from deploy import generate_deploy_stream, generate_restart_stream
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 CORS(app)
 
 
@@ -35,7 +36,7 @@ def index():
 # ---------- 状态接口 ----------
 @app.route('/api/state')
 def get_state():
-    is_first = not DEPLOY_LOG.exists()
+    is_first = not DEPLOY_LOG.exists() or DEPLOY_LOG.stat().st_size == 0
     compose_env = read_compose_env()
     cfg_env = read_config_cfg()
 
@@ -67,7 +68,7 @@ def get_state():
 @app.route('/api/modify', methods=['POST'])
 def modify_config():
     data = request.json
-    module = data.get('module')  # dify / llm / embedding / db
+    module = data.get('module')
     values = data.get('values', {})
 
     compose_updates = {}
@@ -188,7 +189,7 @@ def health_check():
 def run_test_simple():
     msg = (
         "测试功能请回到终端手动操作，步骤如下：\n"
-        "  cd ~/agent_local/test\n"
+        "  cd ~/agent_local/algorithm/test\n"
         "  ./main.sh\n"
         "  根据提示选择 1（模型测试）或 2（业务流程测试）"
     )
@@ -203,7 +204,12 @@ def reset_config():
         return jsonify({"success": False, "error": "未确认操作"})
     try:
         if DEPLOY_LOG.exists():
-            DEPLOY_LOG.unlink()
+            try:
+                DEPLOY_LOG.unlink()
+            except Exception:
+                # 如果删除失败，清空文件内容
+                with open(DEPLOY_LOG, 'w') as f:
+                    f.write('')
         bak_compose = TOOLS_DIR / "docker-compose.yaml.bak"
         bak_cfg = TOOLS_DIR / "config.cfg.bak"
         if bak_compose.exists():
@@ -215,7 +221,6 @@ def reset_config():
         return jsonify({"success": True, "message": "服务配置已重置为初始状态"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5002, debug=False)
