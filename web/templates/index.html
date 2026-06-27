@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agent 部署控制台</title>
+    <title>Agent 部署控制台 - 720 版本</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
 <div class="container">
-    <div class="header"><h1>🧠 Agent 部署控制台</h1></div>
+    <div class="header">
+        <h1>🧠 Agent 部署控制台 <span style="font-size:0.6rem;color:#8ab4f8;">v720</span></h1>
+    </div>
     <div class="content">
         <!-- 主页 -->
         <div id="view-home">
@@ -34,14 +36,16 @@
         <!-- 场景1：部署 -->
         <div id="view-deploy" class="form-section">
             <span class="back-link" onclick="goHome()">← 返回主页</span>
-            <h2>服务部署与配置</h2>
+            <h2>服务部署与配置 <span style="font-size:0.8rem;color:#6c757d;">v734</span></h2>
             <div id="service-status" class="status-bar">
                 服务状态：<span id="status-text">检查中...</span>
                 <span id="status-detail" style="font-size:0.8rem; color:#6c757d; margin-left:10px;"></span>
             </div>
             <div id="deploy-first" style="display:none;">
-                <p>首次部署 – 请依次填写以下配置项，然后点击“加载镜像并启动服务”。</p>
+                <p>首次部署 – 请先填写配置项，然后点击“保存配置”，再点击“加载镜像并启动服务”。</p>
                 <div id="config-form"></div>
+                <!-- 新增加“保存配置”按钮 -->
+                <button class="btn" id="btn-save-config" style="margin-right:10px;">💾 保存配置</button>
                 <button class="btn success" id="btn-load-start">加载镜像并启动服务</button>
                 <div id="deploy-log" class="log-output" style="display:none;"></div>
             </div>

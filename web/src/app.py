@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-Agent Deploy Web 后端
-- 场景1：首次/非首次部署（配置修改、加载镜像、启动服务）
-- 场景2：测试提示（引导回终端操作）
-- 场景3：配置重置
+Agent Deploy Web 后端 - 720 版本（适配 734 前端逻辑）
 """
-import os
 import shutil
 import subprocess
-import time
-from pathlib import Path
-
 from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 from flask_cors import CORS
 
@@ -19,7 +12,7 @@ from config_manager import (
     write_compose_env, write_config_cfg,
     DEPLOY_LOG, COMPOSE_FILE, CONFIG_FILE, TOOLS_DIR
 )
-from docker_manager import load_images, start_service, backup_config, execute_command
+from docker_manager import load_images, start_service, backup_config
 from health import get_health_status
 from deploy import generate_deploy_stream, generate_restart_stream
 
@@ -27,13 +20,11 @@ app = Flask(__name__, template_folder='../templates', static_folder='../static')
 CORS(app)
 
 
-# ---------- 页面 ----------
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
-# ---------- 状态接口 ----------
 @app.route('/api/state')
 def get_state():
     is_first = not DEPLOY_LOG.exists() or DEPLOY_LOG.stat().st_size == 0
@@ -42,10 +33,11 @@ def get_state():
 
     state = {
         "is_first_time": is_first,
+        # 从 docker-compose.yaml 读取（720 版本键名）
         "dify_url": compose_env.get("LOCAL_DIFY_URL", ""),
         "llm_url": compose_env.get("LOCAL_LLM_URL", ""),
         "llm_uid": compose_env.get("LOCAL_LLM_UID", ""),
-        "llm_key": compose_env.get("API_KEY", ""),
+        "llm_key": compose_env.get("LOCAL_LLM_KEY", ""),
         "emb_url": compose_env.get("LOCAL_EMB_URL", ""),
         "emb_uid": compose_env.get("LOCAL_EMB_UID", ""),
         "mysql_host": compose_env.get("MYSQL_HOST", ""),
@@ -55,6 +47,7 @@ def get_state():
         "db_password": compose_env.get("DB_PASSWORD", ""),
         "db_type": compose_env.get("DB_TYPE", ""),
         "db_schema": compose_env.get("DB_SCHEMA", ""),
+        # 从 config.cfg 读取（720 版本键名）
         "cfg_llm_url": cfg_env.get("LLM_MODEL_URL", ""),
         "cfg_llm_id": cfg_env.get("LLM_MODEL_ID", ""),
         "cfg_llm_key": cfg_env.get("LLM_MODEL_KEY", ""),
@@ -64,7 +57,6 @@ def get_state():
     return jsonify(state)
 
 
-# ---------- 配置修改 ----------
 @app.route('/api/modify', methods=['POST'])
 def modify_config():
     data = request.json
@@ -97,7 +89,7 @@ def modify_config():
             compose_updates.update({
                 "LOCAL_LLM_URL": llm_url,
                 "LOCAL_LLM_UID": llm_uid,
-                "API_KEY": llm_key if llm_key else "xxx"
+                "LOCAL_LLM_KEY": llm_key if llm_key else "xxx"
             })
             cfg_updates.update({
                 "LLM_MODEL_URL": f"{llm_url}/chat/completions",
@@ -149,7 +141,6 @@ def modify_config():
         return jsonify({"success": False, "error": str(e)})
 
 
-# ---------- 部署流程 ----------
 @app.route('/api/deploy/load_images', methods=['POST'])
 def load_images_route():
     success, msg = load_images()
@@ -178,13 +169,11 @@ def restart_service_stream():
     return Response(stream_with_context(generate_restart_stream()), mimetype='text/plain')
 
 
-# ---------- 健康检查 ----------
 @app.route('/api/health')
 def health_check():
     return jsonify(get_health_status())
 
 
-# ---------- 测试提示 ----------
 @app.route('/api/test/run', methods=['POST'])
 def run_test_simple():
     msg = (
@@ -196,20 +185,21 @@ def run_test_simple():
     return jsonify({"success": True, "message": msg})
 
 
-# ---------- 重置 ----------
 @app.route('/api/reset', methods=['POST'])
 def reset_config():
     confirm = request.json.get('confirm', False)
     if not confirm:
         return jsonify({"success": False, "error": "未确认操作"})
     try:
+        # 处理 deploy.log
         if DEPLOY_LOG.exists():
             try:
                 DEPLOY_LOG.unlink()
             except Exception:
-                # 如果删除失败，清空文件内容
+                # 删除失败则清空内容
                 with open(DEPLOY_LOG, 'w') as f:
                     f.write('')
+        # 恢复备份配置
         bak_compose = TOOLS_DIR / "docker-compose.yaml.bak"
         bak_cfg = TOOLS_DIR / "config.cfg.bak"
         if bak_compose.exists():
@@ -221,6 +211,7 @@ def reset_config():
         return jsonify({"success": True, "message": "服务配置已重置为初始状态"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5002, debug=False)

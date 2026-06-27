@@ -1,8 +1,9 @@
 let stateCache = null;
 let healthInterval = null;
 
-// ========== 配置修改状态跟踪 ==========
-window._configChanged = false;
+// ========== 配置修改与保存状态 ==========
+window._configChanged = false;   // 任何表单是否被修改过（用于首次和非首次）
+window._configSaved = false;    // 首次部署专用：是否已成功保存配置
 
 function markConfigChanged(element) {
     // 清除该输入框自身的错误提示
@@ -12,17 +13,27 @@ function markConfigChanged(element) {
         const hint = element.parentElement.querySelector('.error-hint');
         if (hint) hint.remove();
     }
-    
-    // 更新全局修改标记
-    const inputs = document.querySelectorAll('#single-module-form input[data-initial-value]');
+
+    // 更新全局修改标记：检查所有带 data-initial-value 的输入/选择框
+    const inputs = document.querySelectorAll(
+        '#single-module-form input[data-initial-value], ' +
+        '#config-form input[data-initial-value], ' +
+        '#config-form select[data-initial-value]'
+    );
     let hasChange = false;
     inputs.forEach(input => {
         const initial = input.getAttribute('data-initial-value') || '';
-        if (input.value !== initial) {
-            hasChange = true;
+        if (input.tagName === 'SELECT') {
+            if (input.value !== initial) hasChange = true;
+        } else {
+            if (input.value !== initial) hasChange = true;
         }
     });
     window._configChanged = hasChange;
+    // 如果有修改，则之前的保存无效（重置保存标志）
+    if (hasChange) {
+        window._configSaved = false;
+    }
 }
 
 // ========== 前端表单校验工具 ==========
@@ -144,6 +155,7 @@ async function showScene(scene) {
             document.getElementById('btn-restart-service').style.display = 'none';
             document.getElementById('deploy-log2').style.display = 'none';
             window._configChanged = false;
+            window._configSaved = false;
         }
     } else if (scene === 'test') {
         document.getElementById('view-test').classList.add('active');
@@ -159,7 +171,7 @@ function goHome() {
     document.getElementById('view-home').style.display = 'block';
 }
 
-// ========== 渲染表单 ==========
+// ========== 渲染首次部署完整表单 ==========
 function renderFullConfigForm() {
     const formDiv = document.getElementById('config-form');
     formDiv.innerHTML = `
@@ -167,73 +179,113 @@ function renderFullConfigForm() {
             <h3>企业大脑地址</h3>
             <div class="input-group">
                 <label>当前值：<span class="current-value">${stateCache.dify_url || '未设置'}</span></label>
-                <input type="text" id="dify-ip-port" placeholder="例: 127.0.0.1:8089">
+                <input type="text" id="dify-ip-port" 
+                       data-initial-value="${stateCache.dify_url || ''}"
+                       placeholder="例: 127.0.0.1:8089"
+                       oninput="markConfigChanged(this)">
             </div>
         </div>
         <div class="config-module">
             <h3>大语言模型 (LLM)</h3>
             <div class="input-group">
                 <label>URL <span class="current-value">(${stateCache.llm_url || '无'})</span></label>
-                <input type="text" id="llm-url" placeholder="例: http://127.0.0.1:16000/v1">
+                <input type="text" id="llm-url" 
+                       data-initial-value="${stateCache.llm_url || ''}"
+                       placeholder="例: http://127.0.0.1:16000/v1"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>UID <span class="current-value">(${stateCache.llm_uid || '无'})</span></label>
-                <input type="text" id="llm-uid" placeholder="模型ID">
+                <input type="text" id="llm-uid" 
+                       data-initial-value="${stateCache.llm_uid || ''}"
+                       placeholder="模型ID"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>API_KEY <span class="current-value">(${stateCache.llm_key || 'xxx'})</span></label>
-                <input type="text" id="llm-key" placeholder="留空则使用默认">
+                <input type="text" id="llm-key" 
+                       data-initial-value="${stateCache.llm_key || ''}"
+                       placeholder="留空则使用默认"
+                       oninput="markConfigChanged(this)">
             </div>
         </div>
         <div class="config-module">
             <h3>Embedding 模型</h3>
             <div class="input-group">
                 <label>URL <span class="current-value">(${stateCache.emb_url || '无'})</span></label>
-                <input type="text" id="emb-url" placeholder="例: http://127.0.0.1:16001/v1/embeddings">
+                <input type="text" id="emb-url" 
+                       data-initial-value="${stateCache.emb_url || ''}"
+                       placeholder="例: http://127.0.0.1:16001/v1/embeddings"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>UID <span class="current-value">(${stateCache.emb_uid || '无'})</span></label>
-                <input type="text" id="emb-uid" placeholder="模型ID">
+                <input type="text" id="emb-uid" 
+                       data-initial-value="${stateCache.emb_uid || ''}"
+                       placeholder="模型ID"
+                       oninput="markConfigChanged(this)">
             </div>
         </div>
         <div class="config-module">
             <h3>数据库配置（可选）</h3>
             <div class="input-group">
                 <label>Host <span class="current-value">(${stateCache.mysql_host || '无'})</span></label>
-                <input type="text" id="db-host" placeholder="数据库主机">
+                <input type="text" id="db-host" 
+                       data-initial-value="${stateCache.mysql_host || ''}"
+                       placeholder="数据库主机"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>Port <span class="current-value">(${stateCache.mysql_port || '无'})</span></label>
-                <input type="text" id="db-port" placeholder="端口号">
+                <input type="text" id="db-port" 
+                       data-initial-value="${stateCache.mysql_port || ''}"
+                       placeholder="端口号"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>数据库名 <span class="current-value">(${stateCache.db_db || 'saas'})</span></label>
-                <input type="text" id="db-db" placeholder="默认 saas">
+                <input type="text" id="db-db" 
+                       data-initial-value="${stateCache.db_db || ''}"
+                       placeholder="默认 saas"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>用户名 <span class="current-value">(${stateCache.db_user || '无'})</span></label>
-                <input type="text" id="db-user" placeholder="用户名">
+                <input type="text" id="db-user" 
+                       data-initial-value="${stateCache.db_user || ''}"
+                       placeholder="用户名"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>密码 <span class="current-value">(已隐藏)</span></label>
-                <input type="password" id="db-password" placeholder="输入新密码">
+                <input type="password" id="db-password" 
+                       data-initial-value="${stateCache.db_password || ''}"
+                       placeholder="输入新密码"
+                       oninput="markConfigChanged(this)">
             </div>
             <div class="input-group">
                 <label>类型 <span class="current-value">(${stateCache.db_type || 'mysql'})</span></label>
-                <select id="db-type">
-                    <option value="mysql">mysql</option>
-                    <option value="dm">dm</option>
-                    <option value="kb">kb</option>
+                <select id="db-type" data-initial-value="${stateCache.db_type || 'mysql'}" onchange="markConfigChanged(this)">
+                    <option value="mysql" ${stateCache.db_type === 'mysql' ? 'selected' : ''}>mysql</option>
+                    <option value="dm" ${stateCache.db_type === 'dm' ? 'selected' : ''}>dm</option>
+                    <option value="kb" ${stateCache.db_type === 'kb' ? 'selected' : ''}>kb</option>
                 </select>
             </div>
             <div class="input-group">
                 <label>Schema <span class="current-value">(${stateCache.db_schema || 'public'})</span></label>
-                <input type="text" id="db-schema" placeholder="默认 public">
+                <input type="text" id="db-schema" 
+                       data-initial-value="${stateCache.db_schema || ''}"
+                       placeholder="默认 public"
+                       oninput="markConfigChanged(this)">
             </div>
         </div>
     `;
+    // 重置状态：刚加载表单，尚未保存，且无修改
+    window._configChanged = false;
+    window._configSaved = false;
 }
 
+// ========== 非首次部署，单模块表单 ==========
 function showModule(module) {
     const div = document.getElementById('single-module-form');
     let html = '';
@@ -301,6 +353,7 @@ function showModule(module) {
     div.innerHTML = html;
     div.style.display = 'block';
     document.getElementById('btn-restart-service').style.display = 'inline-block';
+    // 重置修改标记（因为刚加载完，无修改）
     window._configChanged = false;
 }
 
@@ -311,37 +364,44 @@ async function submitSingle(module) {
     let values = {};
 
     if (module === 'dify') {
-        const ipPort = document.getElementById('dify-ip-single')?.value;
-        if (ipPort && !isValidIPPort(ipPort)) {
+        const ipPort = document.getElementById('dify-ip-single')?.value?.trim();
+        if (!ipPort) {
+            markError('dify-ip-single', '❌ 此项为必填，请输入 IP:端口');
+            errors.push('企业大脑地址不能为空');
+        } else if (!isValidIPPort(ipPort)) {
             markError('dify-ip-single', '❌ 格式错误，请使用 IP:端口');
             errors.push('企业大脑地址格式不正确，请使用 IP:端口 格式');
         }
         values.ip_port = ipPort;
     } else if (module === 'llm') {
-        const url = document.getElementById('llm-url-single')?.value;
-        const uid = document.getElementById('llm-uid-single')?.value;
+        const url = document.getElementById('llm-url-single')?.value?.trim();
+        const uid = document.getElementById('llm-uid-single')?.value?.trim();
         const key = document.getElementById('llm-key-single')?.value || '';
-        if (url && !isValidUrl(url)) {
-            markError('llm-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-            errors.push('LLM URL 格式错误，请以 http:// 或 https:// 开头');
-        }
-        if ((url && !uid) || (!url && uid)) {
-            markError('llm-uid-single', '❌ URL 和 UID 必须同时填写');
-            errors.push('LLM URL 和 UID 必须同时填写');
+        if (!url || !uid) {
+            if (!url) markError('llm-url-single', '❌ URL 不能为空');
+            if (!uid) markError('llm-uid-single', '❌ UID 不能为空');
+            errors.push('LLM URL 和 UID 都不能为空');
+        } else {
+            if (!isValidUrl(url)) {
+                markError('llm-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+                errors.push('LLM URL 格式错误，请以 http:// 或 https:// 开头');
+            }
         }
         values.url = url;
         values.uid = uid;
         values.key = key;
     } else if (module === 'embedding') {
-        const url = document.getElementById('emb-url-single')?.value;
-        const uid = document.getElementById('emb-uid-single')?.value;
-        if (url && !isValidUrl(url)) {
-            markError('emb-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-            errors.push('Embedding URL 格式错误，请以 http:// 或 https:// 开头');
-        }
-        if ((url && !uid) || (!url && uid)) {
-            markError('emb-uid-single', '❌ URL 和 UID 必须同时填写');
-            errors.push('Embedding URL 和 UID 必须同时填写');
+        const url = document.getElementById('emb-url-single')?.value?.trim();
+        const uid = document.getElementById('emb-uid-single')?.value?.trim();
+        if (!url || !uid) {
+            if (!url) markError('emb-url-single', '❌ URL 不能为空');
+            if (!uid) markError('emb-uid-single', '❌ UID 不能为空');
+            errors.push('Embedding URL 和 UID 都不能为空');
+        } else {
+            if (!isValidUrl(url)) {
+                markError('emb-url-single', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+                errors.push('Embedding URL 格式错误，请以 http:// 或 https:// 开头');
+            }
         }
         values.url = url;
         values.uid = uid;
@@ -362,48 +422,59 @@ async function submitSingle(module) {
         body: JSON.stringify({module, values})
     });
     const data = await resp.json();
-    showResult(data.success ? '✅ 保存成功' : '❌ 保存失败', data.message || data.error);
-    await fetchState();
     if (data.success) {
+        showResult('✅ 保存成功', data.message || '配置已更新');
+        await fetchState();
         window._configChanged = false;
+        // 重新渲染该模块表单，更新初始值
         showModule(module);
+    } else {
+        showResult('❌ 保存失败', data.error || data.message || '未知错误');
     }
 }
 
-// ========== saveAllConfigs（首次部署完整表单） ==========
+// ========== saveAllConfigs（首次部署完整表单保存） ==========
 async function saveAllConfigs() {
     clearAllErrors();
     let errors = [];
 
-    const difyIp = document.getElementById('dify-ip-port')?.value;
+    const difyIp = document.getElementById('dify-ip-port')?.value?.trim();
     if (difyIp && !isValidIPPort(difyIp)) {
         markError('dify-ip-port', '❌ 格式错误，请使用 IP:端口');
-        errors.push('【企业大脑】地址格式不正确，请使用 IP:端口 格式 (例: 127.0.0.1:8089)');
+        errors.push('企业大脑地址格式不正确，请使用 IP:端口 格式');
     }
 
-    const llmUrl = document.getElementById('llm-url')?.value;
-    const llmUid = document.getElementById('llm-uid')?.value;
-    if (llmUrl && !isValidUrl(llmUrl)) {
-        markError('llm-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-        errors.push('【LLM】URL 格式错误，请以 http:// 或 https:// 开头');
-    }
-    if ((llmUrl && !llmUid) || (!llmUrl && llmUid)) {
-        markError('llm-uid', '❌ URL 和 UID 必须同时填写');
-        errors.push('【LLM】URL 和 UID 必须同时填写');
-    }
-
-    const embUrl = document.getElementById('emb-url')?.value;
-    const embUid = document.getElementById('emb-uid')?.value;
-    if (embUrl && !isValidUrl(embUrl)) {
-        markError('emb-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
-        errors.push('【Embedding】URL 格式错误，请以 http:// 或 https:// 开头');
-    }
-    if ((embUrl && !embUid) || (!embUrl && embUid)) {
-        markError('emb-uid', '❌ URL 和 UID 必须同时填写');
-        errors.push('【Embedding】URL 和 UID 必须同时填写');
+    const llmUrl = document.getElementById('llm-url')?.value?.trim();
+    const llmUid = document.getElementById('llm-uid')?.value?.trim();
+    if (llmUrl || llmUid) {
+        if (!llmUrl) {
+            markError('llm-url', '❌ URL 不能为空');
+            errors.push('LLM URL 不能为空');
+        } else if (!llmUid) {
+            markError('llm-uid', '❌ UID 不能为空');
+            errors.push('LLM UID 不能为空');
+        } else if (!isValidUrl(llmUrl)) {
+            markError('llm-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+            errors.push('LLM URL 格式错误，请以 http:// 或 https:// 开头');
+        }
     }
 
-    // 数据库字段校验（可选）
+    const embUrl = document.getElementById('emb-url')?.value?.trim();
+    const embUid = document.getElementById('emb-uid')?.value?.trim();
+    if (embUrl || embUid) {
+        if (!embUrl) {
+            markError('emb-url', '❌ URL 不能为空');
+            errors.push('Embedding URL 不能为空');
+        } else if (!embUid) {
+            markError('emb-uid', '❌ UID 不能为空');
+            errors.push('Embedding UID 不能为空');
+        } else if (!isValidUrl(embUrl)) {
+            markError('emb-url', '❌ URL 格式错误，必须以 http:// 或 https:// 开头');
+            errors.push('Embedding URL 格式错误，请以 http:// 或 https:// 开头');
+        }
+    }
+
+    // 数据库校验（可选）
     const dbHost = document.getElementById('db-host')?.value?.trim();
     const dbPort = document.getElementById('db-port')?.value?.trim();
     const dbDb = document.getElementById('db-db')?.value?.trim();
@@ -412,30 +483,30 @@ async function saveAllConfigs() {
 
     if (dbHost && !/^[a-zA-Z0-9.-]+$/.test(dbHost)) {
         markError('db-host', '❌ 主机名只能包含字母、数字、点、横线');
-        errors.push('【数据库】主机名只能包含字母、数字、点、横线');
+        errors.push('数据库主机名格式不正确');
     }
     if (dbPort) {
         const portNum = Number(dbPort);
         if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
             markError('db-port', '❌ 端口必须是 1-65535 的数字');
-            errors.push('【数据库】端口必须是 1-65535 的数字');
+            errors.push('数据库端口格式不正确');
         }
     }
     if (dbDb && !/^[a-zA-Z0-9_]+$/.test(dbDb)) {
         markError('db-db', '❌ 数据库名只能包含字母、数字、下划线');
-        errors.push('【数据库】数据库名只能包含字母、数字、下划线');
+        errors.push('数据库名格式不正确');
     }
     if (dbUser && !/^[a-zA-Z0-9_]+$/.test(dbUser)) {
         markError('db-user', '❌ 用户名只能包含字母、数字、下划线');
-        errors.push('【数据库】用户名只能包含字母、数字、下划线');
+        errors.push('数据库用户名格式不正确');
     }
     if (dbSchema && !/^[a-zA-Z0-9_]+$/.test(dbSchema)) {
         markError('db-schema', '❌ Schema 只能包含字母、数字、下划线');
-        errors.push('【数据库】Schema 只能包含字母、数字、下划线');
+        errors.push('数据库 Schema 格式不正确');
     }
 
     if (errors.length > 0) {
-        let msg = '⚠️ 共发现 ' + errors.length + ' 个问题，请修正后重试：\n\n';
+        let msg = '⚠️ 共发现 ' + errors.length + ' 个问题：\n\n';
         errors.forEach((e, i) => {
             msg += (i + 1) + '. ' + e + '\n';
         });
@@ -466,6 +537,7 @@ async function saveAllConfigs() {
                 body: JSON.stringify({module:'embedding', values:{url:embUrl, uid:embUid}})
             });
         }
+        // 数据库
         if (dbHost || dbPort || dbDb || dbUser || document.getElementById('db-password')?.value || document.getElementById('db-type')?.value || dbSchema) {
             const dbValues = {};
             if (dbHost) dbValues.host = dbHost;
@@ -483,6 +555,9 @@ async function saveAllConfigs() {
                 body: JSON.stringify({module:'db', values: dbValues})
             });
         }
+        // 保存成功，重置状态
+        window._configChanged = false;
+        window._configSaved = true;
         return true;
     } catch (error) {
         showResult('保存失败', error.message);
@@ -490,7 +565,7 @@ async function saveAllConfigs() {
     }
 }
 
-// ========== 流式处理通用函数（含错误检测） ==========
+// ========== 流式处理通用函数 ==========
 async function handleStream(url, logDivId, btnId) {
     const logDiv = document.getElementById(logDivId);
     const btn = document.getElementById(btnId);
@@ -538,16 +613,10 @@ async function handleStream(url, logDivId, btnId) {
         btn.disabled = false;
         btn.textContent = btnId === 'btn-load-start' ? '加载镜像并启动服务' : '重启服务';
         await fetchState();
-
-        if (hasError) {
-            showResult('❌ 部署失败', '部署过程中发生了错误，请检查日志信息。\n\n点击确定返回主页。', function() {
-                goHome();
-            });
-        }
     }
 }
 
-// ========== 模态框（支持回调） ==========
+// ========== 模态框 ==========
 function showResult(title, msg, callback) {
     document.getElementById('result-title').textContent = title;
     document.getElementById('result-msg').textContent = msg;
@@ -566,26 +635,49 @@ function closeModal(id) {
 
 // ========== 事件绑定 ==========
 document.addEventListener('DOMContentLoaded', function() {
+    // ----- 首次部署：保存配置按钮 -----
+    const btnSave = document.getElementById('btn-save-config');
+    if (btnSave) {
+        btnSave.addEventListener('click', async function() {
+            const saved = await saveAllConfigs();
+            if (saved) {
+                showResult('✅ 配置已保存', '所有配置已保存成功，可以继续部署。');
+            }
+        });
+    }
+
+    // ----- 首次部署：加载镜像并启动服务按钮 -----
     const btnLoad = document.getElementById('btn-load-start');
     if (btnLoad) {
         btnLoad.addEventListener('click', async function() {
-            const wasFirstTime = stateCache ? stateCache.is_first_time : true;
-            const saved = await saveAllConfigs();
-            if (!saved) return;
+            // 检查配置是否已保存
+            if (window._configChanged) {
+                showResult('⚠️ 配置未保存', '检测到配置已修改但尚未保存。\n\n请先点击“保存配置”按钮保存后再启动服务。');
+                return;
+            }
+            if (!window._configSaved) {
+                showResult('⚠️ 配置未保存', '请先点击“保存配置”按钮保存当前配置，然后再加载镜像启动服务。');
+                return;
+            }   
+            // 记录当前是否为首次部署（部署完成后状态会变化）
+            const wasFirstTime = stateCache && stateCache.is_first_time;
+            // 执行部署流
             await handleStream('/api/deploy/stream', 'deploy-log', 'btn-load-start');
+            // 如果部署前是首次部署，则弹窗并返回首页
             if (wasFirstTime) {
                 showResult('🎉 首次部署完成', '服务已成功部署并启动！\n\n点击确定返回首页。', function() {
                     goHome();
                 });
             }
         });
-    }
+    } 
 
+    // ----- 非首次部署：重启服务按钮 -----
     const btnRestart = document.getElementById('btn-restart-service');
     if (btnRestart) {
         btnRestart.addEventListener('click', async function() {
             if (window._configChanged) {
-                showResult('⚠️ 配置未保存', '检测到配置已被修改但尚未保存。\n\n请先点击对应模块的“保存”按钮，保存成功后再重启服务。');
+                showResult('⚠️ 配置未保存', '检测到配置已被修改但尚未保存。\n\n请先点击对应模块的"保存"按钮，保存成功后再重启服务。');
                 return;
             }
             await handleStream('/api/service/restart/stream', 'deploy-log2', 'btn-restart-service');

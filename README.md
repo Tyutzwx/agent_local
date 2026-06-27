@@ -79,7 +79,7 @@ agent_local/
 │   ├── docker-compose.control.yaml           # 容器编排启动文件
 │   └── .dockerignore                 # Docker 构建排除文件
 ├── algorithm/                        # 算法组件（独立）
-│   ├── docker-compose.control.yaml           # 5 个微服务编排文件
+│   ├── docker-compose.yaml           # 5 个微服务编排文件
 │   ├── images/                       # Docker 镜像 tar 包
 │   │   ├── agent_local_deep.tar
 │   │   ├── agent_mysql_deep.tar

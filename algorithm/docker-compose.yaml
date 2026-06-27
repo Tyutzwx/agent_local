@@ -45,10 +45,10 @@ services:
       - ENV_CONFIG=prod
       - TZ=Asia/Shanghai
         # 企业大脑地址
-      - LOCAL_DIFY_URL=http://10.1.0.247:1111/frameWorkPortal/agent
+      - LOCAL_DIFY_URL=http://10.1.0.247:8089/frameWorkPortal/agent
         # 大模型地址，当前部署deepseek
       - LOCAL_LLM_URL=http://192.168.174.137
-      - LOCAL_LLM_UID=555
+      - LOCAL_LLM_UID=
       - API_KEY=xxx
         # embedding地址
       - LOCAL_EMB_URL=http://10.1.0.247:18345/v1/mbeddings
@@ -57,7 +57,7 @@ services:
       - REDIS_HOST=redis_offline_map
       - REDIS_PORT=6379
         # mysql地址
-      - MYSQL_HOST=dede
+      - MYSQL_HOST=10.1.0.247
       - MYSQL_PORT=3306
       - DB_DB=445
       - DB_USER=root

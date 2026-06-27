@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# ========== 路径配置 ==========
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="$PROJECT_ROOT/algorithm/docker-compose.yaml"
+CONFIG_FILE="$PROJECT_ROOT/algorithm/test/config.cfg"
+IMAGES_DIR="$PROJECT_ROOT/algorithm/images"
+TOOLS_DIR="$PROJECT_ROOT/algorithm/tools"
+TEST_DIR="$PROJECT_ROOT/algorithm/test"
+DEPLOY_LOG="$PROJECT_ROOT/logs/deploy.log"   # 统一到 logs 目录
+
 # 设置颜色
 BLACK='\033[0;30m'
 RED='\033[0;31m'
@@ -9,18 +18,8 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[0;37m'
-NC='\033[0m' # No Color，用于重置颜色
+NC='\033[0m'
 
-# ========== 路径配置（适配新目录结构） ==========
-PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/algorithm/docker-compose.yaml"
-CONFIG_FILE="$PROJECT_ROOT/algorithm/test/config.cfg"
-IMAGES_DIR="$PROJECT_ROOT/algorithm/images"
-TOOLS_DIR="$PROJECT_ROOT/algorithm/tools"
-TEST_DIR="$PROJECT_ROOT/algorithm/test"
-DEPLOY_LOG="$PROJECT_ROOT/deploy.log"
-
-# 设置日志
 log_info() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $*"
 }
@@ -34,12 +33,11 @@ log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*"
 }
 
-# 设置分割
-Echo_star(){
+Echo_star() {
     echo "************************************************************"
 }
 
-
+# ========== 修改配置的函数（保持原有逻辑，仅路径已用变量） ==========
 modify_dify(){
     read -e -p $'当前企业大脑的配置:\n'"$(grep LOCAL_DIFY_URL "$COMPOSE_FILE")"$'\n请输入新的企业大脑平台的ip和端口, 示例: 127.0.0.1:8089 >>> ' new_ip_port
     sed -i "s|LOCAL_DIFY_URL=http://.*/frameWorkPortal/agent|LOCAL_DIFY_URL=http://$new_ip_port/frameWorkPortal/agent|" "$COMPOSE_FILE"
@@ -103,12 +101,14 @@ modify_db(){
     fi
 }
 
+# ========== 部署主函数 ==========
 server_deploy(){
-    if [ ! -f "$DEPLOY_LOG" ]; then
+    # 判断首次/非首次：文件不存在或为空 => 首次；存在且非空 => 非首次
+    if [ ! -s "$DEPLOY_LOG" ]; then
         log_info "检测到当前首次执行脚本，开始加载服务镜像"
         for i in `ls "$IMAGES_DIR"`; do docker load -i "$IMAGES_DIR/$i"; done
         log_info "服务镜像加载完成"
-        log_info "load image success" > "$DEPLOY_LOG"
+        echo "load image success" > "$DEPLOY_LOG"   # 创建文件并写入内容，标记已部署
         cp "$COMPOSE_FILE" "$TOOLS_DIR/docker-compose.yaml.bak"
         cp "$CONFIG_FILE" "$TOOLS_DIR/config.cfg.bak"
         log_info "基础配置文件备份完成" >> "$DEPLOY_LOG"
@@ -121,18 +121,22 @@ server_deploy(){
         modify_db
     else
         log_warring "检测到当前非首次执行脚本，跳过服务镜像加载。"
-        read -e -p $'请选择要单独修改的配置内容 \n1: 修改企业大脑地址 \n2: 修改大语言模型地址 \n3: 修改embedding模型地址 \n请选择 >>> ' RE_MODIFY
-        if [ "$RE_MODIFY" = "1" ]; then modify_dify; elif [ "$RE_MODIFY" = "2" ]; then modify_llm; elif [ "$RE_MODIFY" = "3" ]; then modify_embedding; fi
+        read -e -p $'请选择要单独修改的配置内容 \n1: 修改企业大脑地址 \n2: 修改大语言模型地址 \n3: 修改embedding模型地址 \n4: 修改数据库配置 \n请选择 >>> ' RE_MODIFY
+        if [ "$RE_MODIFY" = "1" ]; then modify_dify; elif [ "$RE_MODIFY" = "2" ]; then modify_llm; elif [ "$RE_MODIFY" = "3" ]; then modify_embedding; elif [ "$RE_MODIFY" = "4" ]; then modify_db; fi
     fi
 
     # 启动服务
     read -e -p "$(echo -e "${GREEN}[DEBUG]${NC} 是否启动agent服务或修改配置后重启agent服务 yes|no >>> ")" start
-    if [ "$start" = "yes" ]
-    then
+    if [ "$start" = "yes" ]; then
         docker-compose -v
         if [ $? -ne 0 ]; then cp "$TOOLS_DIR/docker-compose-Linux-x86_64" /usr/local/bin/docker-compose; fi
         docker-compose -f "$COMPOSE_FILE" up -d
-        if [ $? = 0 ]; then log_info "服务启动完成"; log_info "服务启动完成" >> "$DEPLOY_LOG"; else log_error "服务启动失败"; exit 1; fi
+        if [ $? = 0 ]; then
+            log_info "服务启动完成"
+            echo "服务启动完成 at $(date)" >> "$DEPLOY_LOG"
+        else
+            log_error "服务启动失败"; exit 1
+        fi
     fi
 }
 
@@ -143,15 +147,14 @@ server_test(){
 
 server_reset(){
     read -e -p "$(echo -e "${GREEN}[DEBUG]${NC} 请再次确认是否恢复原始配置 yes|no >>> ")" init
-    if [ "$init" = "yes" ]
-    then
-        rm -f "$DEPLOY_LOG"
+    if [ "$init" = "yes" ]; then
+        rm -f "$DEPLOY_LOG"          # 删除日志文件，下次执行视为首次
         cp "$TOOLS_DIR/docker-compose.yaml.bak" "$COMPOSE_FILE"
         cp "$TOOLS_DIR/config.cfg.bak" "$CONFIG_FILE"
         log_info "服务配置重置完成"
     fi
 }
 
-# ========== 主程序入口 ==========
+# ========== 主菜单 ==========
 read -e -p $'**********输入你要执行的场景********** \n1: 算法服务初始化启动 \n2: 模型测试和业务流程测试 \n3: 服务配置重置(请谨慎使用) \n请选择 >>> ' PROCESS
 if [ "$PROCESS" = "1" ]; then server_deploy; elif [ "$PROCESS" = "2" ]; then server_test; elif [ "$PROCESS" = "3" ]; then server_reset; fi
