@@ -1,77 +1,65 @@
-version: '3'
 services:
-  mysql_tars_local:
-    image: mysql:deep_260328
-    container_name: mysql_tars_local
-    restart: always
-    environment:
-      - MYSQL_ROOT_PASSWORD=tars123456
-
-  redis_offline_map:
-    image: redis:offline_map_test2
-    container_name: redis_offline_map
-    restart: always
-    command: redis-server /etc/redis/redis.conf
-
-  planer-release:
-    image: z-planner:local_0412
-    container_name: planner_release
-    restart: always
-    environment:
-      - REDIS_HOST=redis_offline_map
-      - REDIS_PORT=6379
-
-  milvus-standalone:
-    image: milvusdb/milvus:v2.5.8-paas
-    container_name: milvus-standalone
-    restart: always
-    privileged: true
-    environment:
-      - ETCD_USE_EMBED=true
-      - ETCD_DATA_DIR=/var/lib/milvus/etcd
-      - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
-      - COMMON_STORAGETYPE=local
-    command: milvus run standalone  1> /dev/null
-
   agent_websocket_local:
-    image: agent_local_deep:0423
-    depends_on:
-      - mysql_tars_local
-      - redis_offline_map
     container_name: agent_websocket_local
-    restart: always
-    privileged: true
+    depends_on:
+    - mysql_tars_local
+    - redis_offline_map
     environment:
-      - ENV_CONFIG=prod
-      - TZ=Asia/Shanghai
-        # 企业大脑地址
-      - LOCAL_DIFY_URL=http://10.1.0.247:8089/frameWorkPortal/agent
-        # 大模型地址，当前部署deepseek
-      - LOCAL_LLM_URL=http://192.168.174.137
-      - LOCAL_LLM_UID=
-      - API_KEY=xxx
-        # embedding地址
-      - LOCAL_EMB_URL=http://10.1.0.247:18345/v1/mbeddings
-      - LOCAL_EMB_UID=Embedding
-        # redis地址
-      - REDIS_HOST=redis_offline_map
-      - REDIS_PORT=6379
-        # mysql地址
-      - MYSQL_HOST=10.1.0.247
-      - MYSQL_PORT=3306
-      - DB_DB=445
-      - DB_USER=root
-      - DB_PASSWORD=tars123456
-      - DB_TYPE=mysql
-        # milvus地址
-      - MILVUS_URL=http://milvus-standalone:19530
-        # planner地址
-      - OFFLINE_PLANER_URL=http://planer-release:5000/text
-        # 文件上传地址
-      - FILE_UPLOAD_URL=http://10.1.0.247:1111/agent_proxy
-        # ADMIN地址
-      - ADMIN_URL=http://10.1.0.247:1111/agent_proxy
-      - MINIO_INTERNAL_URL=http://10.1.0.247:1111/szzn-minio
-      - MINIO_EXTERNAL_URL=http://10.1.0.247:1111/szzn-minio
+    - ENV_CONFIG=prod
+    - TZ=Asia/Shanghai
+    - LOCAL_DIFY_URL=http://192.168.1.100:8089/frameWorkPortal/agent
+    - LOCAL_LLM_URL=http://10.1.0.247:22
+    - LOCAL_LLM_UID=LLM
+    - API_KEY=xxx
+    - LOCAL_EMB_URL=http://10.1.0.247:16001/v1/embeddings
+    - LOCAL_EMB_UID=embedding
+    - REDIS_HOST=redis_offline_map
+    - REDIS_PORT=6379
+    - MYSQL_HOST=10.1.0.247
+    - MYSQL_PORT=3306
+    - DB_DB=ee
+    - DB_USER=root
+    - DB_PASSWORD=tars123456
+    - DB_TYPE=mysql
+    - MILVUS_URL=http://milvus-standalone:19530
+    - OFFLINE_PLANER_URL=http://planer-release:5000/text
+    - FILE_UPLOAD_URL=http://192.168.1.100:8089/agent_proxy
+    - ADMIN_URL=http://192.168.1.100:8089/agent_proxy
+    - MINIO_INTERNAL_URL=http://192.168.1.100:8089/szzn-minio
+    - MINIO_EXTERNAL_URL=http://192.168.1.100:8089/szzn-minio
+    image: agent_local_deep:0423
     ports:
-      - "16580:17850"
+    - 16580:17850
+    privileged: true
+    restart: always
+  milvus-standalone:
+    command: milvus run standalone  1> /dev/null
+    container_name: milvus-standalone
+    environment:
+    - ETCD_USE_EMBED=true
+    - ETCD_DATA_DIR=/var/lib/milvus/etcd
+    - ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml
+    - COMMON_STORAGETYPE=local
+    image: milvusdb/milvus:v2.5.8-paas
+    privileged: true
+    restart: always
+  mysql_tars_local:
+    container_name: mysql_tars_local
+    environment:
+    - MYSQL_ROOT_PASSWORD=tars123456
+    image: mysql:deep_260328
+    restart: always
+  planer-release:
+    container_name: planner_release
+    environment:
+    - REDIS_HOST=redis_offline_map
+    - REDIS_PORT=6379
+    image: z-planner:local_0412
+    restart: always
+  redis_offline_map:
+    command: redis-server /etc/redis/redis.conf
+    container_name: redis_offline_map
+    environment: []
+    image: redis:offline_map_test2
+    restart: always
+version: '3'
